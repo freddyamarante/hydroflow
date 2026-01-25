@@ -1,0 +1,39 @@
+# .github/workflows/deploy-production.yml
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production # Requires manual approval (optional)
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /opt/hydroflow
+            
+            # Pull latest code
+            git fetch origin main
+            git checkout main
+            git pull origin main
+            
+            # Build and deploy production
+            docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml build
+            docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml up -d
+            
+            # Cleanup
+            docker image prune -f
+            
+            echo "✅ Production deployed successfully!"
