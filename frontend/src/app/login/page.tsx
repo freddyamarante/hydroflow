@@ -24,14 +24,14 @@ export default function LoginPage() {
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid email or password');
+      setError(err.response?.data?.message || 'Correo electrónico o contraseña inválidos');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -63,15 +63,15 @@ export default function LoginPage() {
                 </svg>
               </motion.div>
             </div>
-            <CardTitle className="text-2xl text-center">Welcome to HydroFlow</CardTitle>
+            <CardTitle className="text-2xl text-center">Bienvenido a HydroFlow</CardTitle>
             <CardDescription className="text-center">
-              Sign in to access your shrimp farm monitoring system
+              Inicia sesión para acceder al sistema de monitoreo
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Correo Electrónico</Label>
                 <Input
                   id="email"
                   type="email"
@@ -84,11 +84,11 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">Contraseña</Label>
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Enter your password"
+                  placeholder="Ingresa tu contraseña"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -109,10 +109,10 @@ export default function LoginPage() {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
+                    Iniciando sesión...
                   </>
                 ) : (
-                  'Sign In'
+                  'Iniciar Sesión'
                 )}
               </Button>
             </form>
@@ -124,7 +124,7 @@ export default function LoginPage() {
           transition={{ delay: 0.5 }}
           className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400"
         >
-          IoT monitoring system for shrimp farm water management
+          Sistema de monitoreo IoT para gestión hídrica de fincas camaroneras
         </motion.p>
       </motion.div>
     </div>

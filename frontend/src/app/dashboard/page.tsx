@@ -10,33 +10,33 @@ export default function DashboardPage() {
 
   const stats = [
     {
-      title: 'Active Sensors',
+      title: 'Sensores Activos',
       value: '0',
-      description: 'No sensors connected',
+      description: 'Sin sensores conectados',
       icon: Activity,
       color: 'text-blue-600',
       bgColor: 'bg-blue-100 dark:bg-blue-900/20',
     },
     {
-      title: 'Water Quality',
+      title: 'Calidad del Agua',
       value: 'N/A',
-      description: 'Awaiting data',
+      description: 'Esperando datos',
       icon: Droplets,
       color: 'text-cyan-600',
       bgColor: 'bg-cyan-100 dark:bg-cyan-900/20',
     },
     {
-      title: 'Temperature',
+      title: 'Temperatura',
       value: 'N/A',
-      description: 'Awaiting data',
+      description: 'Esperando datos',
       icon: Thermometer,
       color: 'text-orange-600',
       bgColor: 'bg-orange-100 dark:bg-orange-900/20',
     },
     {
-      title: 'Power Status',
+      title: 'Estado de Energía',
       value: 'N/A',
-      description: 'Awaiting data',
+      description: 'Esperando datos',
       icon: Zap,
       color: 'text-yellow-600',
       bgColor: 'bg-yellow-100 dark:bg-yellow-900/20',
@@ -47,10 +47,10 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div>
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
-          Welcome back, {user?.name}!
+          Bienvenido de nuevo, {user?.name}!
         </h2>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Here's an overview of your shrimp farm monitoring system
+          Resumen del sistema de monitoreo de tu finca camaronera
         </p>
       </div>
 
@@ -85,49 +85,49 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Getting Started</CardTitle>
+          <CardTitle>Primeros Pasos</CardTitle>
           <CardDescription>
-            Your HydroFlow system is ready. Start by connecting your IoT sensors.
+            Tu sistema HydroFlow está listo. Comienza conectando tus sensores IoT.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="flex items-start gap-4">
-              <div className="w-8 h-8 rounded-full bg-cyan-600 dark:bg-cyan-500 flex items-center justify-center text-white font-bold flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-cyan-600 dark:bg-cyan-500 flex items-center justify-center text-white font-bold shrink-0">
                 1
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900 dark:text-white">
-                  Configure MQTT Broker
+                  Configurar Broker MQTT
                 </h4>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Set up your MQTT broker to receive sensor data from your IoT devices.
+                  Configura el broker MQTT para recibir datos de sensores desde tus dispositivos IoT.
                 </p>
               </div>
             </div>
             <div className="flex items-start gap-4">
-              <div className="w-8 h-8 rounded-full bg-cyan-600 dark:bg-cyan-500 flex items-center justify-center text-white font-bold flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-cyan-600 dark:bg-cyan-500 flex items-center justify-center text-white font-bold shrink-0">
                 2
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900 dark:text-white">
-                  Add Sensor Stations
+                  Añadir Estaciones de Sensores
                 </h4>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Register your pump stations and sensor modules in the system.
+                  Registra tus estaciones de bombeo y módulos de sensores en el sistema.
                 </p>
               </div>
             </div>
             <div className="flex items-start gap-4">
-              <div className="w-8 h-8 rounded-full bg-cyan-600 dark:bg-cyan-500 flex items-center justify-center text-white font-bold flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-cyan-600 dark:bg-cyan-500 flex items-center justify-center text-white font-bold shrink-0">
                 3
               </div>
               <div>
                 <h4 className="font-semibold text-gray-900 dark:text-white">
-                  Monitor in Real-Time
+                  Monitoreo en Tiempo Real
                 </h4>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Start monitoring water quality, temperature, and other vital parameters.
+                  Comienza a monitorear la calidad del agua, temperatura y otros parámetros vitales.
                 </p>
               </div>
             </div>

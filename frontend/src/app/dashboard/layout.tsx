@@ -36,7 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">HydroFlow</h1>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Water Monitoring System</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400">Sistema de Monitoreo Hídrico</p>
             </div>
           </div>
 
@@ -52,7 +52,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
             <Button variant="outline" size="sm" onClick={logout}>
               <LogOut className="h-4 w-4 mr-2" />
-              Sign Out
+              Cerrar Sesión
             </Button>
           </div>
         </div>

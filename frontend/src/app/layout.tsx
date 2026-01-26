@@ -9,8 +9,8 @@ const publicSans = Public_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "HydroFlow - IoT Monitoring System",
-  description: "Shrimp farm water management monitoring system",
+  title: "HydroFlow - Sistema de Monitoreo IoT",
+  description: "Sistema de monitoreo para gestión hídrica de fincas camaroneras",
 };
 
 export default function RootLayout({
@@ -20,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${publicSans.variable} antialiased`}>
+      <body className={`${publicSans.variable} antialiased dark`}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
