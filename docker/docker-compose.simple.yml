@@ -57,28 +57,28 @@ services:
       REDIS_URL: redis://redis:6379
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET:-change-this-secret}
-    ports:
-      - "3000:3000"
+      PORT: 3000
+      HOST: 0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - hydroflow
 
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-    container_name: hydroflow-web
+  nginx:
+    image: nginx:alpine
+    container_name: hydroflow-nginx
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: http://${SERVER_IP}:3000
     ports:
-      - "3001:3000"
-    depends_on:
-      - backend
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/nginx-backend-only.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
       - hydroflow
+    depends_on:
+      - backend
 
 networks:
   hydroflow:

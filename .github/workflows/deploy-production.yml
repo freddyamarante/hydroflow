@@ -22,18 +22,17 @@ jobs:
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd /opt/hydroflow
-            
+            cd /opt/hydroflow/hydroflow
+
             # Pull latest code
             git fetch origin main
             git checkout main
             git pull origin main
-            
+
             # Build and deploy production
-            docker compose -f docker/docker-compose.simple.yml build
-            docker compose -f docker/docker-compose.simple.yml up -d
-            
+            docker compose -f docker/docker-compose.simple.yml --env-file /opt/hydroflow/.env.prod up -d --build
+
             # Cleanup
             docker image prune -f
-            
+
             echo "✅ Production deployed successfully!"
