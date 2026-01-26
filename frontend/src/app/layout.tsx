@@ -19,8 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${publicSans.variable} antialiased dark`}>
+    <html lang="en" className="dark">
+      <body className={`${publicSans.variable} antialiased`}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
