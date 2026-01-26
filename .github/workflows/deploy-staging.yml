@@ -29,7 +29,7 @@ jobs:
             git pull origin staging
 
             # Build and deploy staging
-            docker compose -f docker/docker-compose.simple.yml --env-file /opt/hydroflow/.env.staging up -d --build
+            docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d --build
 
             # Cleanup
             docker image prune -f

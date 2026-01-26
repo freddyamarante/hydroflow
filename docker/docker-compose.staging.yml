@@ -1,45 +1,77 @@
+# Staging Environment (deployed via GitHub Actions)
 version: '3.8'
 
 services:
-  mosquitto:
-    container_name: hydroflow-mqtt-staging
-    ports:
-      - "1885:1883"
-      - "9002:9001"
-
   postgres:
+    image: timescale/timescaledb:latest-pg16
     container_name: hydroflow-db-staging
+    restart: unless-stopped
     environment:
       POSTGRES_USER: hydroflow
-      POSTGRES_PASSWORD: ${DB_PASSWORD_STAGING:-staging123}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: hydroflow_staging
     ports:
       - "127.0.0.1:5434:5432"
+    volumes:
+      - postgres_data_staging:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U hydroflow" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hydroflow-staging
 
   redis:
+    image: redis:7-alpine
     container_name: hydroflow-cache-staging
+    restart: unless-stopped
     ports:
       - "127.0.0.1:6381:6379"
+    volumes:
+      - redis_data_staging:/data
+    networks:
+      - hydroflow-staging
 
   backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     container_name: hydroflow-api-staging
+    restart: unless-stopped
     environment:
       NODE_ENV: staging
-      DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD_STAGING:-staging123}@postgres:5432/hydroflow_staging
+      DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
       REDIS_URL: redis://redis:6379
-      MQTT_BROKER_URL: mqtt://mosquitto:1883
-      JWT_SECRET: ${JWT_SECRET_STAGING:-staging-jwt-secret}
-    ports:
-      - "127.0.0.1:3002:3000"
-
-  frontend:
-    container_name: hydroflow-web-staging
-    environment:
-      NEXT_PUBLIC_API_URL: https://api-staging.hydroflow.io
-    ports:
-      - "127.0.0.1:3003:3000"
+      MQTT_BROKER_URL: mqtt://178.156.236.104:1883
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 3000
+      HOST: 0.0.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hydroflow-staging
 
   nginx:
-    container_name: hydroflow-proxy-staging
+    image: nginx:alpine
+    container_name: hydroflow-nginx-staging
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
     volumes:
-      - ../nginx/nginx.staging.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/nginx-backend-only.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - hydroflow-staging
+    depends_on:
+      - backend
+
+networks:
+  hydroflow-staging:
+    driver: bridge
+
+volumes:
+  postgres_data_staging:
+  redis_data_staging:

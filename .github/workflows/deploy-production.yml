@@ -30,7 +30,7 @@ jobs:
             git pull origin main
 
             # Build and deploy production
-            docker compose -f docker/docker-compose.simple.yml --env-file /opt/hydroflow/.env.prod up -d --build
+            docker compose -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d --build
 
             # Cleanup
             docker image prune -f
