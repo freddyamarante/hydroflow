@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { config } from './config/index.js';
 import { PrismaClient } from '@prisma/client';
+import authPlugin from './plugins/auth.js';
+import authRoutes from './routes/auth.js';
 
 // Initialize Prisma
 const prisma = new PrismaClient();
@@ -20,6 +22,12 @@ await fastify.register(cors, {
     : true,
   credentials: true,
 });
+
+// Register auth plugin
+await fastify.register(authPlugin);
+
+// Register auth routes
+await fastify.register(authRoutes);
 
 // Health check endpoint
 fastify.get('/health', async (request, reply) => {
@@ -55,6 +63,12 @@ fastify.get('/', async () => {
     environment: config.NODE_ENV,
     endpoints: {
       health: '/health',
+      auth: {
+        login: 'POST /auth/login',
+        logout: 'POST /auth/logout',
+        me: 'GET /auth/me',
+        refresh: 'POST /auth/refresh',
+      },
       docs: '/docs', // Future
     },
   };
