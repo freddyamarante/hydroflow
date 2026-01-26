@@ -9,12 +9,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, logout } = useAuth();
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-background">
       <motion.header
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ duration: 0.3 }}
-        className="sticky top-0 z-50 w-full border-b bg-white dark:bg-gray-800 shadow-sm"
+        className="sticky top-0 z-50 w-full border-b bg-background/70 backdrop-blur-md shadow-sm"
       >
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-3">
@@ -42,7 +42,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           <div className="flex items-center gap-4">
             {user && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-background/70 backdrop-blur-sm border">
                 <User className="h-4 w-4 text-gray-600 dark:text-gray-400" />
                 <div className="text-sm">
                   <p className="font-medium text-gray-900 dark:text-white">{user.name}</p>
