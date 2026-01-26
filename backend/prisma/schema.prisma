@@ -1,0 +1,211 @@
+// HydroFlow Database Schema
+// 6-level hierarchy: GrupoCorporativo -> Empresa -> Finca -> Sector -> EstacionBombeo -> GrupoBombeo -> Equipo
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTH & USERS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(VIEWER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  assignedFincas UserFinca[]
+}
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  VIEWER
+}
+
+model UserFinca {
+  userId    String
+  fincaId   String
+  user      User   @relation(fields: [userId], references: [id])
+  finca     Finca  @relation(fields: [fincaId], references: [id])
+
+  @@id([userId, fincaId])
+}
+
+// ============================================
+// HIERARCHY
+// ============================================
+
+model GrupoCorporativo {
+  id        String    @id @default(cuid())
+  nombre    String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  empresas  Empresa[]
+}
+
+model Empresa {
+  id                  String            @id @default(cuid())
+  nombre              String
+  grupoCorporativoId  String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  grupoCorporativo    GrupoCorporativo  @relation(fields: [grupoCorporativoId], references: [id])
+  fincas              Finca[]
+}
+
+model Finca {
+  id          String    @id @default(cuid())
+  nombre      String
+  empresaId   String
+  ubicacion   Json?     // { lat, lng, area }
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  empresa     Empresa   @relation(fields: [empresaId], references: [id])
+  sectores    Sector[]
+  usuarios    UserFinca[]
+}
+
+model Sector {
+  id        String    @id @default(cuid())
+  nombre    String
+  fincaId   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  finca     Finca     @relation(fields: [fincaId], references: [id])
+  estaciones EstacionBombeo[]
+}
+
+model EstacionBombeo {
+  id        String    @id @default(cuid())
+  nombre    String
+  sectorId  String
+  ubicacion Json?     // { lat, lng }
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  sector    Sector    @relation(fields: [sectorId], references: [id])
+  grupos    GrupoBombeo[]
+}
+
+model GrupoBombeo {
+  id              String          @id @default(cuid())
+  nombre          String
+  estacionId      String
+  tipoModulo      TipoModulo
+  mqttTopic       String          @unique
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  estacion        EstacionBombeo  @relation(fields: [estacionId], references: [id])
+  equipos         Equipo[]
+  lecturas        Lectura[]
+  alertas         Alerta[]
+  reglas          Regla[]
+}
+
+enum TipoModulo {
+  DESCARGA_ABIERTA
+  DESCARGA_CERRADA
+  COMPUERTA_RIO
+}
+
+// ============================================
+// EQUIPMENT
+// ============================================
+
+model Equipo {
+  id              String        @id @default(cuid())
+  nombre          String
+  tipo            TipoEquipo
+  grupoBombeoId   String
+  parametrosTeoricos Json?      // { voltaje, amperaje, rpm, etc. }
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  grupoBombeo     GrupoBombeo   @relation(fields: [grupoBombeoId], references: [id])
+}
+
+enum TipoEquipo {
+  BOMBA
+  MOTOR_ELECTRICO
+  MOTOR_COMBUSTION
+  REDUCTOR
+}
+
+// ============================================
+// READINGS (TimescaleDB hypertable)
+// ============================================
+
+model Lectura {
+  id              String        @id @default(cuid())
+  grupoBombeoId   String
+  timestamp       DateTime      @default(now())
+  datos           Json          // { velocidad, nivel, flujo, voltaje, amperaje, rpm, etc. }
+
+  grupoBombeo     GrupoBombeo   @relation(fields: [grupoBombeoId], references: [id])
+
+  @@index([grupoBombeoId, timestamp])
+}
+
+// ============================================
+// RULES & ALERTS
+// ============================================
+
+model Regla {
+  id              String        @id @default(cuid())
+  grupoBombeoId   String
+  variable        String        // "voltaje", "amperaje", etc.
+  operador        Operador
+  valorTeorico    Float
+  tolerancia      Float         // Percentage (e.g., 5 for 5%)
+  activa          Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  grupoBombeo     GrupoBombeo   @relation(fields: [grupoBombeoId], references: [id])
+}
+
+enum Operador {
+  MAYOR_QUE
+  MENOR_QUE
+  IGUAL_A
+  DIFERENTE_DE
+  FUERA_DE_RANGO
+}
+
+model Alerta {
+  id              String        @id @default(cuid())
+  grupoBombeoId   String
+  tipo            TipoAlerta
+  mensaje         String
+  datos           Json?         // Snapshot of reading that triggered alert
+  resuelta        Boolean       @default(false)
+  resueltaAt      DateTime?
+  createdAt       DateTime      @default(now())
+
+  grupoBombeo     GrupoBombeo   @relation(fields: [grupoBombeoId], references: [id])
+
+  @@index([grupoBombeoId, createdAt])
+}
+
+enum TipoAlerta {
+  SENSOR_DESCONECTADO
+  VALOR_FUERA_RANGO
+  REGLA_VIOLADA
+  EQUIPO_FALLA
+}

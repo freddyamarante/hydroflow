@@ -1,0 +1,38 @@
+{
+  "name": "@hydroflow/backend",
+  "version": "1.0.0",
+  "description": "HydroFlow IoT monitoring system backend",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "bun build src/index.ts --target=bun --outdir=dist",
+    "start": "bun dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "keywords": [
+    "iot",
+    "mqtt",
+    "monitoring",
+    "hydroflow"
+  ],
+  "author": "Freddy Amarante (Valencia Web Design)",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@prisma/client": "^6.1.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "mqtt": "^5.10.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "prisma": "^6.1.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
