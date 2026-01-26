@@ -29,7 +29,7 @@ fastify.get('/health', async (request, reply) => {
 
     return {
       status: 'ok',
-      message: 'funciona',
+      message: 'funcionaaaaaa',
       timestamp: new Date().toISOString(),
       environment: config.NODE_ENV,
       database: 'connected',
