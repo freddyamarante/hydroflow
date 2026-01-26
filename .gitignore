@@ -29,3 +29,7 @@ Thumbs.db
 mosquitto/data/
 mosquitto/log/
 postgres_data/
+
+# Claude
+claude/
+
