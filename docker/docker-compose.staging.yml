@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    container_name: hydroflow-mqtt-staging
+    ports:
+      - "1885:1883"
+      - "9002:9001"
+
+  postgres:
+    container_name: hydroflow-db-staging
+    environment:
+      POSTGRES_USER: hydroflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD_STAGING:-staging123}
+      POSTGRES_DB: hydroflow_staging
+    ports:
+      - "127.0.0.1:5434:5432"
+
+  redis:
+    container_name: hydroflow-cache-staging
+    ports:
+      - "127.0.0.1:6381:6379"
+
+  backend:
+    container_name: hydroflow-api-staging
+    environment:
+      NODE_ENV: staging
+      DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD_STAGING:-staging123}@postgres:5432/hydroflow_staging
+      REDIS_URL: redis://redis:6379
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      JWT_SECRET: ${JWT_SECRET_STAGING:-staging-jwt-secret}
+    ports:
+      - "127.0.0.1:3002:3000"
+
+  frontend:
+    container_name: hydroflow-web-staging
+    environment:
+      NEXT_PUBLIC_API_URL: https://api-staging.hydroflow.io
+    ports:
+      - "127.0.0.1:3003:3000"
+
+  nginx:
+    container_name: hydroflow-proxy-staging
+    volumes:
+      - ../nginx/nginx.staging.conf:/etc/nginx/nginx.conf:ro
