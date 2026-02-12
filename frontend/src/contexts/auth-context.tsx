@@ -7,15 +7,16 @@ import { useRouter } from 'next/navigation';
 export interface User {
   id: string;
   email: string;
-  name: string;
-  role: 'ADMIN' | 'SUPERVISOR' | 'VIEWER';
-  createdAt?: string;
+  nombre: string;
+  apellido?: string;
+  rol: 'ADMIN' | 'SUPERVISOR' | 'VISOR';
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, contrasena: string, nombre: string, apellido?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -36,18 +37,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Check if user is logged in on mount
   useEffect(() => {
     const checkAuth = async () => {
       await refreshUser();
       setLoading(false);
     };
-
     checkAuth();
   }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
     const response = await api.post('/auth/login', { email, password });
+    setUser(response.data.user);
+    router.push('/dashboard');
+  };
+
+  const register = async (email: string, contrasena: string, nombre: string, apellido?: string) => {
+    const response = await api.post('/auth/register', { email, contrasena, nombre, apellido });
     setUser(response.data.user);
     router.push('/dashboard');
   };
@@ -59,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

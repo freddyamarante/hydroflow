@@ -8,20 +8,22 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "bun --cwd backend dev",
+    "dev": "bash -c 'lsof -ti:4000,4001 | xargs kill 2>/dev/null; sleep 0.5; trap \"kill 0\" EXIT; bun run dev:backend & bun run dev:frontend'",
     "dev:backend": "bun --cwd backend dev",
-    "dev:frontend": "PORT=3001 bun --cwd frontend dev",
+    "dev:frontend": "PORT=4001 bun --cwd frontend dev",
     "dev:services": "docker compose -f docker/docker-compose.yml up -d",
     "dev:services:stop": "docker compose -f docker/docker-compose.yml down",
+    "dev:all": "bun run dev:services && sleep 2 && bash -c 'lsof -ti:4000,4001 | xargs kill 2>/dev/null; sleep 0.5; trap \"kill 0\" EXIT; bun run dev:backend & bun run dev:frontend & sleep 3 && bun run mqtt:mock'",
+    "mqtt:mock": "bun run scripts/mqtt-mock.ts",
     "build": "bun run build:backend && bun run build:frontend",
     "build:backend": "bun --cwd backend build",
     "build:frontend": "bun --cwd frontend build",
     "install:all": "bun install",
     "clean": "rm -rf backend/node_modules backend/dist frontend/node_modules frontend/.next",
-    "prisma:generate": "bun --cwd backend prisma:generate",
-    "prisma:migrate": "bun --cwd backend prisma:migrate",
-    "prisma:migrate:dev": "bun --cwd backend prisma:migrate:dev",
-    "prisma:studio": "bun --cwd backend prisma:studio"
+    "db:generate": "cd backend && bunx prisma generate",
+    "db:push": "cd backend && bunx prisma migrate dev",
+    "db:seed": "cd backend && bunx prisma db seed",
+    "db:studio": "cd backend && bunx prisma studio"
   },
   "keywords": [
     "iot",
@@ -34,5 +36,8 @@
   "license": "UNLICENSED",
   "engines": {
     "bun": ">=1.0.0"
+  },
+  "devDependencies": {
+    "mqtt": "^5.15.0"
   }
 }

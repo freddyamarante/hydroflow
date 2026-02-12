@@ -1,12 +1,22 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import { config } from './config/index.js';
-import { PrismaClient } from '@prisma/client';
+import prisma from './lib/prisma.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
-
-// Initialize Prisma
-const prisma = new PrismaClient();
+import empresasRoutes from './routes/empresas.js';
+import localesRoutes from './routes/locales.js';
+import areasRoutes from './routes/areas.js';
+import sectoresRoutes from './routes/sectores.js';
+import unidadesRoutes from './routes/unidades.js';
+import lecturasRoutes from './routes/lecturas.js';
+import gruposCorporativosRoutes from './routes/grupos-corporativos.js';
+import usuariosRoutes from './routes/usuarios.js';
+import adminRoutes from './routes/admin.js';
+import meRoutes from './routes/me.js';
+import { connectMqtt, disconnectMqtt } from './services/mqtt.js';
+import { initReadingsHandler } from './services/readings.js';
 
 // Initialize Fastify
 const fastify = Fastify({
@@ -23,17 +33,33 @@ await fastify.register(cors, {
   credentials: true,
 });
 
+// Register WebSocket plugin
+await fastify.register(websocket);
+
 // Register auth plugin
 await fastify.register(authPlugin);
 
 // Register auth routes
 await fastify.register(authRoutes);
 
+// Register API routes
+await fastify.register(empresasRoutes, { prefix: '/api' });
+await fastify.register(localesRoutes, { prefix: '/api' });
+await fastify.register(areasRoutes, { prefix: '/api' });
+await fastify.register(sectoresRoutes, { prefix: '/api' });
+await fastify.register(unidadesRoutes, { prefix: '/api' });
+await fastify.register(lecturasRoutes, { prefix: '/api' });
+await fastify.register(gruposCorporativosRoutes, { prefix: '/api' });
+await fastify.register(usuariosRoutes, { prefix: '/api' });
+await fastify.register(adminRoutes, { prefix: '/api' });
+await fastify.register(meRoutes, { prefix: '/api' });
+
 // Health check endpoint
-fastify.get('/health', async (request, reply) => {
+fastify.get('/health', async (_request, reply) => {
   try {
-    // Test database connection
     await prisma.$queryRaw`SELECT 1`;
+
+    const mqttClient = getMqttClient();
 
     return {
       status: 'ok',
@@ -41,7 +67,7 @@ fastify.get('/health', async (request, reply) => {
       timestamp: new Date().toISOString(),
       environment: config.NODE_ENV,
       database: 'connected',
-      mqtt: 'pending', // Will update when MQTT client is implemented
+      mqtt: mqttClient?.connected ? 'connected' : 'disconnected',
     };
   } catch (error) {
     reply.code(503);
@@ -65,11 +91,22 @@ fastify.get('/', async () => {
       health: '/health',
       auth: {
         login: 'POST /auth/login',
+        register: 'POST /auth/register',
         logout: 'POST /auth/logout',
         me: 'GET /auth/me',
         refresh: 'POST /auth/refresh',
       },
-      docs: '/docs', // Future
+      api: {
+        gruposCorporativos: '/api/grupos-corporativos',
+        empresas: '/api/empresas',
+        usuarios: '/api/usuarios',
+        locales: '/api/locales',
+        areas: '/api/areas',
+        sectores: '/api/sectores',
+        unidades: '/api/unidades',
+        lecturas: '/api/lecturas',
+        ws: '/api/ws/lecturas/:unidadId',
+      },
     },
   };
 });
@@ -78,6 +115,7 @@ fastify.get('/', async () => {
 const gracefulShutdown = async () => {
   fastify.log.info('Received shutdown signal, closing gracefully...');
 
+  await disconnectMqtt();
   await prisma.$disconnect();
   await fastify.close();
 
@@ -95,9 +133,12 @@ const start = async () => {
       host: config.HOST
     });
 
-    fastify.log.info(`🚀 HydroFlow Backend running on ${config.HOST}:${config.PORT}`);
-    fastify.log.info(`📊 Environment: ${config.NODE_ENV}`);
-    fastify.log.info(`🔗 Database: ${config.DATABASE_URL.split('@')[1]?.split('/')[0] || 'connected'}`);
+    fastify.log.info(`HydroFlow Backend running on ${config.HOST}:${config.PORT}`);
+    fastify.log.info(`Environment: ${config.NODE_ENV}`);
+
+    // Connect MQTT (non-blocking, reconnects automatically)
+    initReadingsHandler();
+    connectMqtt();
   } catch (error) {
     fastify.log.error(error);
     process.exit(1);

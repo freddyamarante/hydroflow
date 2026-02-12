@@ -1,5 +1,5 @@
 // HydroFlow Database Schema
-// 7-level hierarchy: GrupoCorporativo (optional) -> Empresa -> Finca -> ProductionUnit -> Area -> Station -> PumpGroup -> Equipment
+// Hierarchy: GrupoCorporativo (optional) -> Empresa -> LocalProductivo -> Area -> Sector -> UnidadProduccion
 
 generator client {
   provider = "prisma-client-js"
@@ -11,323 +11,255 @@ datasource db {
 }
 
 // ============================================
+// ENUMS
+// ============================================
+
+enum Rol {
+  ADMIN
+  SUPERVISOR
+  VISOR
+}
+
+enum Operador {
+  MAYOR_QUE
+  MENOR_QUE
+  IGUAL_A
+  DIFERENTE_DE
+  FUERA_DE_RANGO
+}
+
+enum Severidad {
+  BAJA
+  MEDIA
+  ALTA
+  CRITICA
+}
+
+// ============================================
 // AUTH & USERS
 // ============================================
 
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  password      String
-  name          String
-  role          Role      @default(VIEWER)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+model Usuario {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  contrasena String
+  nombre    String
+  apellido  String?
+  telefono  String?
+  empresaId String?
+  rol       Rol      @default(VISOR)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Relations
-  assignedFincas         UserFinca[]
-  responsibleForStations Station[]  // Stations this user is responsible for
+  empresa             Empresa?                @relation(fields: [empresaId], references: [id], onDelete: SetNull)
+  localesProductivos  UsuarioLocalProductivo[]
+  sectoresResponsable Sector[]
+
+  @@map("usuario")
 }
 
-enum Role {
-  ADMIN
-  SUPERVISOR
-  VIEWER
-}
+model UsuarioLocalProductivo {
+  usuarioId        String
+  localProductivoId String
 
-model UserFinca {
-  userId    String
-  fincaId   String
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  finca     Finca  @relation(fields: [fincaId], references: [id], onDelete: Cascade)
+  usuario         Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  localProductivo LocalProductivo @relation(fields: [localProductivoId], references: [id], onDelete: Cascade)
 
-  @@id([userId, fincaId])
+  @@id([usuarioId, localProductivoId])
+  @@map("usuario_local_productivo")
 }
 
 // ============================================
-// ORGANIZATIONAL HIERARCHY (7 LEVELS)
+// ORGANIZATIONAL HIERARCHY
 // ============================================
 
 // Level 1: Corporate Group (OPTIONAL)
 model GrupoCorporativo {
-  id        String    @id @default(cuid())
-  nombre    String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                    String   @id @default(cuid())
+  razonSocial           String
+  tipoIndustria         String?
+  direccion             String?
+  ubicacionDomiciliaria String?
+  paginaWeb             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  empresas  Empresa[]
+  empresas Empresa[]
 
   @@map("grupo_corporativo")
 }
 
-// Level 2: Company (REQUIRED, may exist without corporate group)
+// Level 2: Company
 model Empresa {
-  id                  String             @id @default(cuid())
-  nombre              String
-  grupoCorporativoId  String?            // Now optional (nullable)
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  id                    String   @id @default(cuid())
+  razonSocial           String
+  marcaComercial        String?
+  ruc                   String?
+  actividadEconomica    String?
+  telefono              String?
+  direccion             String?
+  ubicacionDomiciliaria String?
+  areaProduccion        String?
+  paginaWeb             String?
+  grupoCorporativoId    String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  grupoCorporativo    GrupoCorporativo?  @relation(fields: [grupoCorporativoId], references: [id], onDelete: SetNull)
-  fincas              Finca[]
+  grupoCorporativo   GrupoCorporativo? @relation(fields: [grupoCorporativoId], references: [id], onDelete: SetNull)
+  localesProductivos LocalProductivo[]
+  usuarios           Usuario[]
 
   @@map("empresa")
 }
 
-// Level 3: Farm (core operational unit)
-model Finca {
-  id          String    @id @default(cuid())
-  nombre      String
-  empresaId   String
-  ubicacion   Json?     // { lat, lng, area } - General farm location
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+// Level 3: Productive Location (farm, lab, etc.)
+model LocalProductivo {
+  id                    String   @id @default(cuid())
+  nombre                String
+  tipoProductivo        String?
+  empresaId             String
+  bounds                Json?
+  areaProduccion        String?
+  direccion             String?
+  ubicacionDomiciliaria String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  empresa          Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  productionUnits  ProductionUnit[] // Now has ProductionUnits instead of Sectors
-  usuarios         UserFinca[]
+  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  areas    Area[]
+  usuarios UsuarioLocalProductivo[]
 
-  @@map("finca")
+  @@map("local_productivo")
 }
 
-// Level 4: Production Unit (NEW - type of operation)
-// Examples: Pumping operations, Aeration systems, etc.
-model ProductionUnit {
-  id        String          @id @default(cuid())
-  nombre    String          // e.g., "Bombeo Principal", "Aireación Sector A"
-  tipo      ProductionType  // Type of operation
-  fincaId   String
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-
-  finca     Finca   @relation(fields: [fincaId], references: [id], onDelete: Cascade)
-  areas     Area[]
-
-  @@map("production_unit")
-}
-
-enum ProductionType {
-  PUMPING      // Estaciones de bombeo
-  AERATION     // Future: Aeration systems
-  FEEDING      // Future: Automated feeding
-  MONITORING   // Future: Monitoring stations
-}
-
-// Level 5: Area (RENAMED from Sector - physical zone within production unit)
-// Examples: "Estación de Bombeo Norte", "Zona de Aireación 1"
+// Level 4: Area
 model Area {
-  id               String         @id @default(cuid())
-  nombre           String         // Physical zone name
-  productionUnitId String
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id                  String   @id @default(cuid())
+  nombre              String
+  localProductivoId   String
+  actividadProductiva String?
+  bounds              Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  productionUnit   ProductionUnit @relation(fields: [productionUnitId], references: [id], onDelete: Cascade)
-  stations         Station[]
+  localProductivo LocalProductivo @relation(fields: [localProductivoId], references: [id], onDelete: Cascade)
+  sectores        Sector[]
 
   @@map("area")
 }
 
-// Level 6: Station (RENAMED from EstacionBombeo - specific station/unit)
-// Examples: "Estación 5", "Bomba Norte 2"
-model Station {
-  id            String    @id @default(cuid())
-  nombre        String    // Specific station name
-  areaId        String
-  coordinates   Json?     // { lat, lng } - Exact location for map placement
-  responsibleId String?   // User responsible for this station
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+// Level 5: Sector
+model Sector {
+  id                    String   @id @default(cuid())
+  nombre                String
+  areaId                String
+  tipo                  String?
+  bounds                Json?
+  detalles              Json?
+  usuarioResponsableId  String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  area          Area        @relation(fields: [areaId], references: [id], onDelete: Cascade)
-  responsible   User?       @relation(fields: [responsibleId], references: [id], onDelete: SetNull)
-  pumpGroups    PumpGroup[]
+  area                Area               @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  usuarioResponsable  Usuario?           @relation(fields: [usuarioResponsableId], references: [id], onDelete: SetNull)
+  unidadesProduccion  UnidadProduccion[]
 
-  @@map("station")
+  @@map("sector")
 }
 
-// Level 7: Pump Group (individual pump unit within a station)
-model PumpGroup {
-  id              String      @id @default(cuid())
-  nombre          String      // e.g., "Bomba 1", "Grupo A"
-  stationId       String
-  moduleType      ModuleType
-  mqttTopic       String      @unique  // MQTT topic for this pump group
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+// Level 6: Production Unit
+model UnidadProduccion {
+  id            String   @id @default(cuid())
+  nombre        String
+  sectorId      String
+  posicion      Json?
+  detalles      Json?
+  tipoModuloId  String?
+  topicMqtt     String   @unique
+  configuracion Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  station         Station     @relation(fields: [stationId], references: [id], onDelete: Cascade)
-  equipment       Equipment?  // 1:1 relationship (was 1:N)
-  readings        Reading[]
-  alerts          Alert[]
-  rules           Rule[]
+  sector   Sector    @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  lecturas Lectura[]
+  reglas   Regla[]
+  alertas  Alerta[]
+  equipos  Equipo[]
 
-  @@map("pump_group")
+  @@map("unidad_produccion")
 }
 
-enum ModuleType {
-  DESCARGA_ABIERTA   // Open discharge
-  DESCARGA_CERRADA   // Closed discharge
-  COMPUERTA_RIO      // River gate
-}
+// Level 7: Equipment
+model Equipo {
+  id                  String   @id @default(cuid())
+  nombre              String
+  tipo                String   // bomba, motor, reductor
+  marca               String?
+  modelo              String?
+  especificaciones    Json?
+  unidadProduccionId  String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-// ============================================
-// EQUIPMENT (1:1 with PumpGroup - All Nominal Specs)
-// ============================================
+  unidadProduccion UnidadProduccion @relation(fields: [unidadProduccionId], references: [id], onDelete: Cascade)
 
-// Single equipment record per pump group
-// Contains ALL nominal/theoretical specifications
-// NOT reusable across pump groups
-model Equipment {
-  id              String    @id @default(cuid())
-  pumpGroupId     String    @unique  // 1:1 relationship
-
-  // Basic Information
-  brand           String?   // Equipment brand/manufacturer
-  model           String?   // Model number
-  serialNumber    String?   // Serial number
-  installDate     DateTime? // Installation date
-
-  // Pump Specifications
-  pumpType        String?   // Centrifugal, submersible, etc.
-  pumpCapacity    Float?    // Flow capacity (m³/h)
-  pumpHead        Float?    // Pump head (m)
-  impellerSize    Float?    // Impeller diameter (mm)
-
-  // Motor Specifications
-  motorType       String?   // Electric, combustion, etc.
-  motorPower      Float?    // Rated power (kW or HP)
-  nominalVoltage  Float?    // Nominal voltage (V)
-  nominalCurrent  Float?    // Nominal current (A)
-  nominalRPM      Float?    // Nominal RPM
-  motorEfficiency Float?    // Motor efficiency (%)
-  powerFactor     Float?    // Power factor
-
-  // Reducer/Gearbox (if applicable)
-  hasReducer      Boolean   @default(false)
-  reductionRatio  Float?    // Gear reduction ratio
-
-  // Physical Parameters
-  pipeInletSize   Float?    // Inlet pipe diameter (mm)
-  pipeOutletSize  Float?    // Outlet pipe diameter (mm)
-
-  // Additional specs (flexible JSON for future fields)
-  additionalSpecs Json?     // Other specifications as needed
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  pumpGroup       PumpGroup @relation(fields: [pumpGroupId], references: [id], onDelete: Cascade)
-
-  @@map("equipment")
+  @@map("equipo")
 }
 
 // ============================================
-// SENSOR READINGS (TimescaleDB hypertable)
+// SENSOR READINGS
 // ============================================
 
-// Explicit columns instead of JSON blob
-// Allows for proper indexing, aggregations, and queries
-model Reading {
-  id                  String    @id @default(cuid())
-  pumpGroupId         String
-  timestamp           DateTime  @default(now())
+model Lectura {
+  id                  String   @id @default(cuid())
+  unidadProduccionId  String
+  timestamp           DateTime @default(now())
+  valores             Json
 
-  // Flow & Level Measurements
-  velocity            Float?    // Water velocity (m/s)
-  level               Float?    // Water level (m)
-  instantaneousFlow   Float?    // Instantaneous flow rate (m³/h)
-  volume              Float?    // Volume pumped in this interval (m³) - calculated with actual time delta
+  unidadProduccion UnidadProduccion @relation(fields: [unidadProduccionId], references: [id], onDelete: Cascade)
 
-  // Electrical Measurements
-  voltage             Float?    // Voltage (V)
-  current             Float?    // Current (A)
-  power               Float?    // Power consumption (kW)
-  powerFactor         Float?    // Power factor
-  frequency           Float?    // Frequency (Hz)
-
-  // Mechanical Measurements
-  rpm                 Float?    // Revolutions per minute
-  pressure            Float?    // Pressure (bar or PSI)
-  temperature         Float?    // Temperature (°C)
-
-  // Derived/Calculated Fields
-  efficiency          Float?    // Calculated efficiency (%)
-
-  // Energy Tracking
-  energyConsumption   Float?    // Energy consumption from separate meter (kWh)
-
-  // Backup for additional/future fields
-  additionalData      Json?     // Any extra sensor data not in explicit columns
-
-  pumpGroup           PumpGroup @relation(fields: [pumpGroupId], references: [id], onDelete: Cascade)
-
-  @@index([pumpGroupId, timestamp(sort: Desc)])
+  @@index([unidadProduccionId, timestamp(sort: Desc)])
   @@index([timestamp(sort: Desc)])
-  @@map("reading")
+  @@map("lectura")
 }
 
 // ============================================
 // RULES & ALERTS
 // ============================================
 
-// Rules for automated alert generation
-// Compare sensor readings against equipment nominal values
-model Rule {
-  id              String    @id @default(cuid())
-  pumpGroupId     String
-  variable        String    // Sensor variable: "voltage", "current", "rpm", etc.
-  operator        Operator  // Comparison operator
-  referenceValue  Float     // From Equipment specs
-  tolerance       Float     // Tolerance percentage (e.g., 5 for ±5%)
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+model Regla {
+  id                     String   @id @default(cuid())
+  unidadProduccionId     String
+  nombre                 String
+  variable               String
+  operador               Operador
+  compararCon            String?
+  valorFijo              Float?
+  codigoEspecificacion   String?
+  toleranciaPorcentaje   Float?
+  severidad              Severidad
+  activa                 Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  pumpGroup       PumpGroup @relation(fields: [pumpGroupId], references: [id], onDelete: Cascade)
+  unidadProduccion UnidadProduccion @relation(fields: [unidadProduccionId], references: [id], onDelete: Cascade)
 
-  @@map("rule")
+  @@map("regla")
 }
 
-enum Operator {
-  GREATER_THAN        // >
-  LESS_THAN           // <
-  EQUAL_TO            // =
-  NOT_EQUAL_TO        // !=
-  OUT_OF_RANGE        // Outside tolerance range
-}
+model Alerta {
+  id                  String    @id @default(cuid())
+  unidadProduccionId  String
+  reglaId             String?
+  mensaje             String
+  severidad           Severidad
+  contexto            Json?
+  resuelta            Boolean   @default(false)
+  resueltaEn          DateTime?
+  resueltaPor         String?
+  creadaEn            DateTime  @default(now())
 
-// System-generated alerts based on rules or sensor disconnections
-model Alert {
-  id              String     @id @default(cuid())
-  pumpGroupId     String
-  type            AlertType  // Alert type
-  message         String     // Alert message (Spanish for users)
-  severity        Severity   // Alert severity level
-  readingSnapshot Json?      // Sensor data when alert triggered
-  isResolved      Boolean    @default(false)
-  resolvedAt      DateTime?
-  resolvedBy      String?    // User ID who resolved the alert
-  notes           String?    // Resolution notes
-  createdAt       DateTime   @default(now())
+  unidadProduccion UnidadProduccion @relation(fields: [unidadProduccionId], references: [id], onDelete: Cascade)
 
-  pumpGroup       PumpGroup  @relation(fields: [pumpGroupId], references: [id], onDelete: Cascade)
-
-  @@index([pumpGroupId, createdAt(sort: Desc)])
-  @@index([isResolved, createdAt(sort: Desc)])
-  @@map("alert")
-}
-
-enum AlertType {
-  SENSOR_DISCONNECTED  // Sensor lost connection
-  VALUE_OUT_OF_RANGE   // Value outside acceptable range
-  RULE_VIOLATION       // Rule condition violated
-  EQUIPMENT_FAILURE    // Equipment failure detected
-  HIGH_ENERGY_USAGE    // Abnormal energy consumption
-}
-
-enum Severity {
-  LOW       // Informational
-  MEDIUM    // Warning
-  HIGH      // Critical
-  CRITICAL  // Immediate action required
+  @@map("alerta")
 }
