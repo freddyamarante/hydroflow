@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,8 +28,17 @@ jobs:
             git checkout staging
             git pull origin staging
 
-            # Build and deploy staging
+            # Ensure shared proxy network exists
+            docker network create hydroflow-proxy 2>/dev/null || true
+
+            # Build and deploy staging services
             docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d --build
+
+            # Run database migrations
+            docker compose -f docker/docker-compose.staging.yml exec -T backend bunx prisma migrate deploy
+
+            # Restart prod nginx so it can route staging subdomains
+            docker compose -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d nginx
 
             # Cleanup
             docker image prune -f
