@@ -1,5 +1,5 @@
-# Production Environment (deployed via GitHub Actions)
-version: '3.8'
+# Production Environment
+# Requires external network: docker network create hydroflow-proxy
 
 services:
   postgres:
@@ -52,6 +52,27 @@ services:
         condition: service_healthy
     networks:
       - hydroflow
+      - hydroflow-proxy
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.hydro-flow.io
+    container_name: hydroflow-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      - backend
+    networks:
+      hydroflow:
+        aliases:
+          - frontend-prod
+      hydroflow-proxy:
 
   nginx:
     image: nginx:alpine
@@ -61,16 +82,20 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ../nginx/nginx-backend-only.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     networks:
       - hydroflow
+      - hydroflow-proxy
     depends_on:
       - backend
+      - frontend
 
 networks:
   hydroflow:
     driver: bridge
+  hydroflow-proxy:
+    external: true
 
 volumes:
   postgres_data:

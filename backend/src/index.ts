@@ -15,7 +15,7 @@ import gruposCorporativosRoutes from './routes/grupos-corporativos.js';
 import usuariosRoutes from './routes/usuarios.js';
 import adminRoutes from './routes/admin.js';
 import meRoutes from './routes/me.js';
-import { connectMqtt, disconnectMqtt } from './services/mqtt.js';
+import { connectMqtt, disconnectMqtt, getMqttClient } from './services/mqtt.js';
 import { initReadingsHandler } from './services/readings.js';
 
 // Initialize Fastify
@@ -27,9 +27,13 @@ const fastify = Fastify({
 
 // Register CORS
 await fastify.register(cors, {
-  origin: config.NODE_ENV === 'production'
-    ? ['https://hydro-flow.io', 'https://www.hydro-flow.io']
-    : true,
+  origin: config.NODE_ENV === 'development'
+    ? true
+    : [
+        'https://hydro-flow.io',
+        'https://www.hydro-flow.io',
+        'https://staging.hydro-flow.io',
+      ],
   credentials: true,
 });
 
