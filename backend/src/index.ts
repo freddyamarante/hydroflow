@@ -85,6 +85,11 @@ fastify.get('/health', async (_request, reply) => {
   }
 });
 
+// Debug endpoint (temporary)
+fastify.get('/debug', async () => {
+  return { deployed: new Date().toISOString(), env: config.NODE_ENV, version: 'debug-1' };
+});
+
 // Root endpoint
 fastify.get('/', async () => {
   return {
