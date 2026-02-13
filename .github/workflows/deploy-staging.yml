@@ -32,8 +32,9 @@ jobs:
             # Ensure shared proxy network exists
             docker network create hydroflow-proxy 2>/dev/null || true
 
-            # Build and deploy staging services
-            docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d --build
+            # Build and deploy staging services (no-cache to ensure fresh build)
+            docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build --no-cache
+            docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
 
             # Run database migrations
             docker compose -f docker/docker-compose.staging.yml exec -T backend bunx prisma migrate deploy
