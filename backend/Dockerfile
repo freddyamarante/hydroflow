@@ -5,6 +5,9 @@ FROM oven/bun:1-alpine AS deps
 
 WORKDIR /app
 
+# Install build tools for native modules (argon2)
+RUN apk add --no-cache make g++ python3
+
 # Copy package files
 COPY package.json bun.lock* ./
 
@@ -39,6 +42,9 @@ WORKDIR /app
 
 # Set environment
 ENV NODE_ENV=production
+
+# Install build tools for native modules (argon2)
+RUN apk add --no-cache make g++ python3
 
 # Copy package files and install production dependencies
 COPY package.json bun.lock* ./
