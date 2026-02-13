@@ -87,9 +87,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       fastify.log.error(error);
       return reply.code(500).send({
         error: 'Internal Server Error',
-        message: config.NODE_ENV !== 'production'
-          ? String(error)
-          : 'An error occurred during login',
+        message: String(error),
+        debug: { env: config.NODE_ENV, stack: error instanceof Error ? error.stack : undefined },
       });
     }
   });
