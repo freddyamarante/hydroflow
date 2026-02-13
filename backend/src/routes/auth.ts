@@ -19,6 +19,18 @@ const registerSchema = z.object({
   empresaId: z.string().optional(),
 });
 
+const isSecure = config.NODE_ENV !== 'development';
+const cookieDomain = isSecure ? '.hydro-flow.io' : undefined;
+
+const cookieOptions = {
+  httpOnly: true,
+  secure: isSecure,
+  sameSite: 'lax' as const,
+  domain: cookieDomain,
+  path: '/',
+  maxAge: 7 * 24 * 60 * 60,
+};
+
 const authRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /auth/login - Authenticate user
   fastify.post('/auth/login', async (request, reply) => {
@@ -59,13 +71,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         rol: user.rol,
       });
 
-      reply.setCookie('token', token, {
-        httpOnly: true,
-        secure: config.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 60 * 60,
-      });
+      reply.setCookie('token', token, cookieOptions);
 
       return {
         user: {
@@ -87,8 +93,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       fastify.log.error(error);
       return reply.code(500).send({
         error: 'Internal Server Error',
-        message: String(error),
-        debug: { env: config.NODE_ENV, stack: error instanceof Error ? error.stack : undefined },
+        message: 'An error occurred during login',
       });
     }
   });
@@ -135,13 +140,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         rol: user.rol,
       });
 
-      reply.setCookie('token', token, {
-        httpOnly: true,
-        secure: config.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 60 * 60,
-      });
+      reply.setCookie('token', token, cookieOptions);
 
       return { user };
     } catch (error) {
@@ -199,6 +198,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/auth/logout', async (_request, reply) => {
     reply.clearCookie('token', {
       path: '/',
+      domain: cookieDomain,
     });
 
     return { message: 'Logged out successfully' };
@@ -217,13 +217,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         rol: user.rol,
       });
 
-      reply.setCookie('token', token, {
-        httpOnly: true,
-        secure: config.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 7 * 24 * 60 * 60,
-      });
+      reply.setCookie('token', token, cookieOptions);
 
       return { message: 'Token refreshed successfully' };
     } catch (error) {
