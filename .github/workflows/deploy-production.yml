@@ -23,12 +23,13 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
+            set -e
             cd /opt/hydroflow/hydroflow
 
-            # Pull latest code
+            # Pull latest code (reset local changes from manual edits)
             git fetch origin main
             git checkout main
-            git pull origin main
+            git reset --hard origin/main
 
             # Ensure shared proxy network exists
             docker network create hydroflow-proxy 2>/dev/null || true

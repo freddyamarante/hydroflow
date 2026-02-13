@@ -22,6 +22,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
+            set -e
             cd /opt/hydroflow/hydroflow
 
             # Pull latest code (reset local changes from manual edits)

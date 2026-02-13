@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY frontend/package.json ./
 
-RUN bun install
+RUN bun install --no-frozen-lockfile
 
 # ============================================
 # Stage 2: Builder
