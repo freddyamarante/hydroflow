@@ -1,7 +1,7 @@
 # ============================================
 # Stage 1: Dependencies
 # ============================================
-# Build context must be repo root (for bun.lock access)
+# Build context: repo root
 FROM oven/bun:1-alpine AS deps
 
 WORKDIR /app
@@ -9,8 +9,7 @@ WORKDIR /app
 # Install build tools for native modules (argon2)
 RUN apk add --no-cache make g++ python3
 
-# Copy package files (lockfile from repo root, package.json from backend/)
-COPY bun.lock ./
+# Copy package.json only (no workspace lockfile — it causes frozen lockfile errors)
 COPY backend/package.json ./
 
 # Install dependencies
@@ -45,12 +44,11 @@ WORKDIR /app
 # Install build tools for native modules (argon2)
 RUN apk add --no-cache make g++ python3
 
-# Copy package files and install production dependencies
-COPY bun.lock ./
+# Copy package.json and install production dependencies
 COPY backend/package.json ./
 RUN bun install --production
 
-# Set environment after install to avoid frozen lockfile
+# Set environment after install
 ENV NODE_ENV=production
 
 # Copy built application

@@ -5,7 +5,6 @@ FROM oven/bun:1-alpine AS deps
 
 WORKDIR /app
 
-COPY bun.lock ./
 COPY frontend/package.json ./
 
 RUN bun install
