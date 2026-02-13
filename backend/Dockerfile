@@ -12,7 +12,7 @@ RUN apk add --no-cache make g++ python3
 COPY package.json bun.lock* ./
 
 # Install dependencies
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # ============================================
 # Stage 2: Builder
@@ -48,7 +48,7 @@ RUN apk add --no-cache make g++ python3
 
 # Copy package files and install production dependencies
 COPY package.json bun.lock* ./
-RUN bun install --production --frozen-lockfile
+RUN bun install --production
 
 # Copy built application
 COPY --from=builder /app/dist ./dist
