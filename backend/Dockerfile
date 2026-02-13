@@ -1,6 +1,7 @@
 # ============================================
 # Stage 1: Dependencies
 # ============================================
+# Build context must be repo root (for bun.lock access)
 FROM oven/bun:1-alpine AS deps
 
 WORKDIR /app
@@ -8,11 +9,12 @@ WORKDIR /app
 # Install build tools for native modules (argon2)
 RUN apk add --no-cache make g++ python3
 
-# Copy package files
-COPY package.json bun.lock* ./
+# Copy package files (lockfile from repo root, package.json from backend/)
+COPY bun.lock ./
+COPY backend/package.json ./
 
 # Install dependencies
-RUN bun install --no-frozen-lockfile
+RUN bun install
 
 # ============================================
 # Stage 2: Builder
@@ -24,8 +26,8 @@ WORKDIR /app
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
-# Copy source code
-COPY . .
+# Copy backend source code
+COPY backend/ .
 
 # Generate Prisma client
 RUN bun run prisma:generate
@@ -40,15 +42,16 @@ FROM oven/bun:1-alpine AS runner
 
 WORKDIR /app
 
-# Set environment
-ENV NODE_ENV=production
-
 # Install build tools for native modules (argon2)
 RUN apk add --no-cache make g++ python3
 
 # Copy package files and install production dependencies
-COPY package.json bun.lock* ./
-RUN bun install --production --no-frozen-lockfile
+COPY bun.lock ./
+COPY backend/package.json ./
+RUN bun install --production
+
+# Set environment after install to avoid frozen lockfile
+ENV NODE_ENV=production
 
 # Copy built application
 COPY --from=builder /app/dist ./dist
@@ -67,7 +70,7 @@ EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD bun -e "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1))"
+  CMD bun -e "fetch('http://localhost:3000').then(r => process.exit(r.ok ? 0 : 1))"
 
 # Start application
 CMD ["bun", "run", "start"]
