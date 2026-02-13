@@ -24,10 +24,10 @@ jobs:
           script: |
             cd /opt/hydroflow/hydroflow
 
-            # Pull latest code
+            # Pull latest code (reset local changes from manual edits)
             git fetch origin staging
             git checkout staging
-            git pull origin staging
+            git reset --hard origin/staging
 
             # Ensure shared proxy network exists
             docker network create hydroflow-proxy 2>/dev/null || true
