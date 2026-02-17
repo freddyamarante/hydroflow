@@ -76,6 +76,17 @@ services:
         aliases:
           - frontend-staging
 
+  mqtt-mock:
+    build:
+      context: ..
+      dockerfile: scripts/Dockerfile
+    container_name: hydroflow-mqtt-mock-staging
+    restart: unless-stopped
+    environment:
+      MQTT_BROKER_URL: mqtt://178.156.236.104:1883
+    networks:
+      - hydroflow-staging
+
 networks:
   hydroflow-staging:
     driver: bridge
