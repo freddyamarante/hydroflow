@@ -6,7 +6,6 @@ backend/dist
 frontend/node_modules
 frontend/.next
 mosquitto/data
-scripts
 *.md
 .env
 .env.local
