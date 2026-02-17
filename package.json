@@ -8,12 +8,13 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "bash -c 'lsof -ti:4000,4001 | xargs kill 2>/dev/null; sleep 0.5; trap \"kill 0\" EXIT; bun run dev:backend & bun run dev:frontend'",
+    "dev": "bun run dev:services && sleep 2 && bash -c 'lsof -ti:4000,4001 | xargs kill 2>/dev/null; sleep 0.5; trap \"kill 0\" EXIT; bun run dev:backend & bun run dev:frontend & sleep 3 && bun run mqtt:mock'",
+    "dev:quick": "bash -c 'lsof -ti:4000,4001 | xargs kill 2>/dev/null; sleep 0.5; trap \"kill 0\" EXIT; bun run dev:backend & bun run dev:frontend'",
+    "dev:all": "bun run dev",
     "dev:backend": "bun --cwd backend dev",
     "dev:frontend": "PORT=4001 bun --cwd frontend dev",
     "dev:services": "docker compose -f docker/docker-compose.yml up -d",
     "dev:services:stop": "docker compose -f docker/docker-compose.yml down",
-    "dev:all": "bun run dev:services && sleep 2 && bash -c 'lsof -ti:4000,4001 | xargs kill 2>/dev/null; sleep 0.5; trap \"kill 0\" EXIT; bun run dev:backend & bun run dev:frontend & sleep 3 && bun run mqtt:mock'",
     "mqtt:mock": "bun run scripts/mqtt-mock.ts",
     "build": "bun run build:backend && bun run build:frontend",
     "build:backend": "bun --cwd backend build",

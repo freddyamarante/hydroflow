@@ -43,6 +43,9 @@ jobs:
             # Ensure standalone nginx is running (does not affect staging)
             docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d
 
+            # Reload nginx to re-resolve DNS for new container IPs
+            docker exec hydroflow-nginx nginx -s reload
+
             # Cleanup
             docker image prune -f
 

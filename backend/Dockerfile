@@ -56,6 +56,9 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/prisma ./prisma
 
+# Copy shared seed config (seed.ts imports ../../scripts/seed-config → /scripts/seed-config)
+COPY scripts/seed-config.ts /scripts/seed-config.ts
+
 # Create non-root user
 RUN addgroup --system --gid 1001 bunuser && \
     adduser --system --uid 1001 hydroflow && \
