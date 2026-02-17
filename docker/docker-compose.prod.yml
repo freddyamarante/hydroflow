@@ -4,7 +4,7 @@
 services:
   postgres:
     image: timescale/timescaledb:latest-pg16
-    container_name: hydroflow-db
+    container_name: hydroflow-db-prod
     restart: unless-stopped
     environment:
       POSTGRES_USER: hydroflow
@@ -20,24 +20,24 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - hydroflow
+      - hydroflow-prod
 
   redis:
     image: redis:7-alpine
-    container_name: hydroflow-cache
+    container_name: hydroflow-cache-prod
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - hydroflow
+      - hydroflow-prod
 
   backend:
     build:
       context: ..
       dockerfile: backend/Dockerfile
-    container_name: hydroflow-api
+    container_name: hydroflow-api-prod
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -51,8 +51,10 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - hydroflow
-      - hydroflow-proxy
+      hydroflow-prod:
+      hydroflow-proxy:
+        aliases:
+          - backend-prod
 
   frontend:
     build:
@@ -60,7 +62,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: https://api.hydro-flow.io
-    container_name: hydroflow-frontend
+    container_name: hydroflow-frontend-prod
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -69,30 +71,13 @@ services:
     depends_on:
       - backend
     networks:
-      hydroflow:
+      hydroflow-prod:
+      hydroflow-proxy:
         aliases:
           - frontend-prod
-      hydroflow-proxy:
-
-  nginx:
-    image: nginx:alpine
-    container_name: hydroflow-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    networks:
-      - hydroflow
-      - hydroflow-proxy
-    depends_on:
-      - backend
-      - frontend
 
 networks:
-  hydroflow:
+  hydroflow-prod:
     driver: bridge
   hydroflow-proxy:
     external: true

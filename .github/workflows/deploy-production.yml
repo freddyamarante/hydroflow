@@ -35,10 +35,13 @@ jobs:
             docker network create hydroflow-proxy 2>/dev/null || true
 
             # Build and deploy production
-            docker compose -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d --build
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d --build
 
             # Run database migrations
-            docker compose -f docker/docker-compose.prod.yml exec -T backend bunx prisma migrate deploy
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml exec -T backend bunx prisma migrate deploy
+
+            # Ensure standalone nginx is running (does not affect staging)
+            docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d
 
             # Cleanup
             docker image prune -f

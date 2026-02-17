@@ -352,7 +352,7 @@ async function main() {
       id: 'seed-user-admin',
       nombre: 'Admin',
       apellido: 'HydroFlow',
-      email: 'admin@hydroflow.io',
+      email: 'admin@hydro-flow.io',
       contrasena: hashedPassword,
       rol: 'ADMIN',
       empresaId: produmar.id,

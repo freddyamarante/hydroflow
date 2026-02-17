@@ -34,15 +34,15 @@ jobs:
             docker network create hydroflow-proxy 2>/dev/null || true
 
             # Build and deploy staging services (no-cache to ensure fresh build)
-            docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build --no-cache
-            docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build --no-cache
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
 
             # Run database migrations and seed
-            docker compose -f docker/docker-compose.staging.yml exec -T backend bunx prisma migrate deploy
-            docker compose -f docker/docker-compose.staging.yml exec -T backend bun run prisma/seed.ts
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bunx prisma migrate deploy
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bun run prisma/seed.ts
 
-            # Restart prod nginx so it can route staging subdomains
-            docker compose -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d nginx
+            # Ensure standalone nginx is running (does not affect prod)
+            docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d
 
             # Cleanup
             docker image prune -f
