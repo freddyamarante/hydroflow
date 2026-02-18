@@ -85,7 +85,7 @@ services:
     environment:
       MQTT_BROKER_URL: mqtt://178.156.236.104:1883
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
-      MOCK_INTERVAL_MS: "60000"
+      MOCK_INTERVAL_MS: "15000"
       MOCK_RETENTION_HOURS: "24"
     depends_on:
       postgres:
