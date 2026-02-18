@@ -5,17 +5,11 @@ import { addWsConnection, removeWsConnection } from '../services/readings.js';
 const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /ws/lecturas/:unidadId - WebSocket endpoint for real-time readings
   fastify.get('/ws/lecturas/:unidadId', { websocket: true }, async (socket, request) => {
-    // Verify JWT from query param for WebSocket connections
-    const { token } = request.query as { token?: string };
-    if (!token) {
-      socket.close(1008, 'Token required');
-      return;
-    }
-
+    // Verify JWT from cookie (sent automatically with the WS upgrade request)
     try {
-      fastify.jwt.verify(token);
+      await request.jwtVerify();
     } catch {
-      socket.close(1008, 'Invalid token');
+      socket.close(1008, 'Invalid or missing token');
       return;
     }
 

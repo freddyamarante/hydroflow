@@ -19,7 +19,10 @@ export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeRe
   const connect = useCallback(() => {
     if (!unidadId) return;
 
-    const wsUrl = `ws://localhost:4000/api/ws/lecturas/${unidadId}`;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const wsProtocol = apiUrl.startsWith('https') ? 'wss' : 'ws';
+    const wsHost = apiUrl.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProtocol}://${wsHost}/api/ws/lecturas/${unidadId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
