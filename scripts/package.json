@@ -2,6 +2,7 @@
   "name": "hydroflow-mqtt-mock",
   "private": true,
   "dependencies": {
-    "mqtt": "^5.15.0"
+    "mqtt": "^5.15.0",
+    "postgres": "^3.4.5"
   }
 }
