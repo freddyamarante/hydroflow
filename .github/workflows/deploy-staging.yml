@@ -41,11 +41,8 @@ jobs:
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bunx prisma migrate deploy
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bun run prisma/seed.ts
 
-            # Ensure standalone nginx is running (does not affect prod)
-            docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d
-
-            # Reload nginx to re-resolve DNS for new container IPs
-            docker exec hydroflow-nginx nginx -s reload
+            # Recreate nginx so it picks up config changes (git reset creates new inodes)
+            docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
 
             # Cleanup
             docker image prune -f
