@@ -13,7 +13,7 @@ const createEmpresaSchema = z.object({
   ubicacionDomiciliaria: z.string().optional(),
   areaProduccion: z.string().optional(),
   paginaWeb: z.string().optional(),
-  grupoCorporativoId: z.string().optional(),
+  grupoCorporativoId: z.string().optional().transform(v => v || undefined),
 });
 
 const updateEmpresaSchema = createEmpresaSchema.partial();

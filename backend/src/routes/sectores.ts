@@ -11,7 +11,7 @@ const createSectorSchema = z.object({
   tipo: z.string().optional(),
   bounds: z.any().optional(),
   detalles: z.any().optional(),
-  usuarioResponsableId: z.string().optional(),
+  usuarioResponsableId: z.string().optional().transform(v => v || undefined),
 });
 
 const updateSectorSchema = createSectorSchema.partial();
