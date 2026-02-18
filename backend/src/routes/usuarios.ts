@@ -10,7 +10,7 @@ const createUsuarioSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   apellido: z.string().optional(),
   telefono: z.string().optional(),
-  empresaId: z.string().optional(),
+  empresaId: z.string().optional().transform(v => v || undefined),
   rol: z.enum(['ADMIN', 'SUPERVISOR', 'VISOR']).optional(),
 });
 
@@ -20,7 +20,7 @@ const updateUsuarioSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required').optional(),
   apellido: z.string().optional(),
   telefono: z.string().optional(),
-  empresaId: z.string().optional(),
+  empresaId: z.string().optional().transform(v => v || undefined),
   rol: z.enum(['ADMIN', 'SUPERVISOR', 'VISOR']).optional(),
 });
 
