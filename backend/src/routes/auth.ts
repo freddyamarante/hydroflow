@@ -71,6 +71,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         rol: user.rol,
       });
 
+      // Clear any stale domain-specific cookie (e.g. api-staging.hydro-flow.io)
+      // before setting the cross-domain one, so duplicate cookies don't conflict
+      reply.clearCookie('token', { path: '/' });
       reply.setCookie('token', token, cookieOptions);
 
       return {
@@ -196,10 +199,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /auth/logout - Clear authentication cookie
   fastify.post('/auth/logout', async (_request, reply) => {
-    reply.clearCookie('token', {
-      path: '/',
-      domain: cookieDomain,
-    });
+    // Clear both the cross-domain cookie and any stale domain-specific one
+    reply.clearCookie('token', { path: '/' });
+    reply.clearCookie('token', { path: '/', domain: cookieDomain });
 
     return { message: 'Logged out successfully' };
   });
