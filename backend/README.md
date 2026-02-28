@@ -107,11 +107,12 @@ bun run prisma:studio
 src/
 ├── config/         # Environment configuration
 ├── index.ts        # Server entry point
-├── mqtt/           # MQTT client & handlers (TODO)
-├── routes/         # API endpoints (TODO)
-├── services/       # Business logic (TODO)
-├── utils/          # Utilities (TODO)
-└── types/          # TypeScript types (TODO)
+├── lib/            # Shared libraries (Prisma, RBAC, access control)
+├── plugins/        # Fastify plugins (auth)
+├── routes/         # API endpoints
+├── services/       # MQTT client & sensor readings
+├── types/          # Shared TypeScript types & Fastify augmentations
+└── utils/          # Utilities (TODO)
 ```
 
 ## Environment Variables

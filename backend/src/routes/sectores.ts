@@ -1,9 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
-import { Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { requireAdmin } from '../lib/rbac.js';
 import { getUserLocalIds } from '../lib/access.js';
+import type { PaginationQuery } from '../types/index.js';
 
 const createSectorSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
@@ -22,16 +22,13 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /sectores - List with pagination and optional areaId filter
   fastify.get('/sectores', async (request, reply) => {
     try {
-      const { page = '1', limit = '20', areaId } = request.query as {
-        page?: string;
-        limit?: string;
-        areaId?: string;
-      };
+      const { page = '1', limit = '20', areaId } = request.query as
+        PaginationQuery & { areaId?: string };
       const pageNum = Math.max(1, parseInt(page));
       const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
       const skip = (pageNum - 1) * limitNum;
 
-      const user = request.user as { id: string; rol: Rol };
+      const user = request.user;
       let where: any = areaId ? { areaId } : {};
 
       if (user.rol !== 'ADMIN') {
