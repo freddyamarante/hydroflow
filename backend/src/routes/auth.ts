@@ -46,6 +46,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: true,
           apellido: true,
           rol: true,
+          empresaId: true,
+          esAdminEmpresa: true,
         },
       });
 
@@ -69,6 +71,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         id: user.id,
         email: user.email,
         rol: user.rol,
+        empresaId: user.empresaId ?? undefined,
+        esAdminEmpresa: user.esAdminEmpresa,
       });
 
       // Clear any stale domain-specific cookie (e.g. api-staging.hydro-flow.io)
@@ -83,6 +87,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: user.nombre,
           apellido: user.apellido,
           rol: user.rol,
+          empresaId: user.empresaId,
+          esAdminEmpresa: user.esAdminEmpresa,
         },
       };
     } catch (error) {
@@ -134,6 +140,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: true,
           apellido: true,
           rol: true,
+          empresaId: true,
+          esAdminEmpresa: true,
         },
       });
 
@@ -141,6 +149,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         id: user.id,
         email: user.email,
         rol: user.rol,
+        empresaId: user.empresaId ?? undefined,
+        esAdminEmpresa: user.esAdminEmpresa,
       });
 
       reply.setCookie('token', token, cookieOptions);
@@ -177,6 +187,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: true,
           apellido: true,
           rol: true,
+          empresaId: true,
+          esAdminEmpresa: true,
         },
       });
 
@@ -211,12 +223,21 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     onRequest: [fastify.authenticate],
   }, async (request, reply) => {
     try {
-      const user = request.user;
+      const dbUser = await prisma.usuario.findUnique({
+        where: { id: request.user.id },
+        select: { id: true, email: true, rol: true, empresaId: true, esAdminEmpresa: true },
+      });
+
+      if (!dbUser) {
+        return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+      }
 
       const token = fastify.jwt.sign({
-        id: user.id,
-        email: user.email,
-        rol: user.rol,
+        id: dbUser.id,
+        email: dbUser.email,
+        rol: dbUser.rol,
+        empresaId: dbUser.empresaId ?? undefined,
+        esAdminEmpresa: dbUser.esAdminEmpresa,
       });
 
       reply.setCookie('token', token, cookieOptions);

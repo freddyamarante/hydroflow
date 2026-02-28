@@ -1,8 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, getLocalRole, getLocalIdFromSector, getLocalIdFromUnidad } from '../lib/access.js';
 import type { PaginationQuery } from '../types/index.js';
 
 const createUnidadSchema = z.object({
@@ -88,10 +87,28 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /unidades - Create unidad (admin only)
-  fastify.post('/unidades', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /unidades - Create unidad (admin or supervisor on the parent local)
+  fastify.post('/unidades', async (request, reply) => {
     try {
       const data = createUnidadSchema.parse(request.body);
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromSector(data.sectorId);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Sector not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to create unidades in this local productivo',
+          });
+        }
+      }
 
       const unidad = await prisma.unidadProduccion.create({ data });
 
@@ -112,11 +129,29 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /unidades/:id - Update unidad (admin only)
-  fastify.put('/unidades/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /unidades/:id - Update unidad (admin or supervisor on the parent local)
+  fastify.put('/unidades/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = updateUnidadSchema.parse(request.body);
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromUnidad(id);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Unidad de produccion not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to update this unidad de produccion',
+          });
+        }
+      }
 
       const unidad = await prisma.unidadProduccion.update({
         where: { id },
@@ -147,10 +182,28 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /unidades/:id - Delete unidad (admin only)
-  fastify.delete('/unidades/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /unidades/:id - Delete unidad (admin or supervisor on the parent local)
+  fastify.delete('/unidades/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromUnidad(id);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Unidad de produccion not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to delete this unidad de produccion',
+          });
+        }
+      }
 
       await prisma.unidadProduccion.delete({ where: { id } });
 

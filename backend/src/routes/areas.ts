@@ -1,8 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, getLocalRole, getLocalIdFromArea } from '../lib/access.js';
 import type { PaginationQuery } from '../types/index.js';
 
 const createAreaSchema = z.object({
@@ -147,10 +146,21 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /areas - Create area (admin only)
-  fastify.post('/areas', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /areas - Create area (admin or supervisor on the target local)
+  fastify.post('/areas', async (request, reply) => {
     try {
       const data = createAreaSchema.parse(request.body);
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localRole = await getLocalRole(user.id, data.localProductivoId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to create areas in this local productivo',
+          });
+        }
+      }
 
       const area = await prisma.area.create({ data });
 
@@ -171,11 +181,29 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /areas/:id - Update area (admin only)
-  fastify.put('/areas/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /areas/:id - Update area (admin or supervisor on the parent local)
+  fastify.put('/areas/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = updateAreaSchema.parse(request.body);
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromArea(id);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Area not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to update this area',
+          });
+        }
+      }
 
       const area = await prisma.area.update({
         where: { id },
@@ -206,10 +234,28 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /areas/:id - Delete area (admin only)
-  fastify.delete('/areas/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /areas/:id - Delete area (admin or supervisor on the parent local)
+  fastify.delete('/areas/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromArea(id);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Area not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to delete this area',
+          });
+        }
+      }
 
       await prisma.area.delete({ where: { id } });
 

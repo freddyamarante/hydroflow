@@ -19,7 +19,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Map, Layers, Box, Pencil, Trash2, Plus, Eye } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Map, Layers, Box, Pencil, Trash2, Plus, Eye, UserPlus, RefreshCw, Unlink } from 'lucide-react';
+
+interface LocalUsuario {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+  rol: string;
+}
+
+interface EmpresaUsuario {
+  id: string;
+  nombre: string;
+  apellido: string;
+  email: string;
+}
 
 interface LocalDashboard {
   local: {
@@ -59,6 +76,12 @@ export default function LocalDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [areaDialogOpen, setAreaDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const [localUsuarios, setLocalUsuarios] = useState<LocalUsuario[]>([]);
+  const [assignUserDialogOpen, setAssignUserDialogOpen] = useState(false);
+  const [empresaUsuarios, setEmpresaUsuarios] = useState<EmpresaUsuario[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedRol, setSelectedRol] = useState<string>('SUPERVISOR');
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -114,6 +137,70 @@ export default function LocalDetailPage() {
     }
   }
 
+  const fetchLocalUsuarios = useCallback(async () => {
+    try {
+      const res = await api.get(`/api/locales/${localId}/usuarios`);
+      setLocalUsuarios(res.data.items);
+    } catch {
+      // silently fail, users section is supplementary
+    }
+  }, [localId]);
+
+  useEffect(() => {
+    fetchLocalUsuarios();
+  }, [fetchLocalUsuarios]);
+
+  async function handleOpenAssignDialog() {
+    try {
+      const res = await api.get(`/api/usuarios?limit=100`);
+      const allUsers: EmpresaUsuario[] = res.data.items.filter(
+        (u: EmpresaUsuario & { empresaId?: string }) => u.empresaId === empresaId
+      );
+      setEmpresaUsuarios(allUsers);
+      setSelectedUserId('');
+      setSelectedRol('SUPERVISOR');
+      setAssignUserDialogOpen(true);
+    } catch {
+      setError('Error al cargar usuarios de la empresa');
+    }
+  }
+
+  async function handleAssignUser() {
+    if (!selectedUserId) return;
+    try {
+      setSubmitting(true);
+      await api.post(`/api/locales/${localId}/usuarios`, {
+        usuarioId: selectedUserId,
+        rol: selectedRol,
+      });
+      setAssignUserDialogOpen(false);
+      fetchLocalUsuarios();
+    } catch {
+      setError('Error al asignar usuario al local');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleChangeRol(userId: string, currentRol: string) {
+    const newRol = currentRol === 'SUPERVISOR' ? 'VISOR' : 'SUPERVISOR';
+    try {
+      await api.put(`/api/locales/${localId}/usuarios/${userId}`, { rol: newRol });
+      fetchLocalUsuarios();
+    } catch {
+      setError('Error al cambiar el rol del usuario');
+    }
+  }
+
+  async function handleUnlinkUser(userId: string) {
+    try {
+      await api.delete(`/api/locales/${localId}/usuarios/${userId}`);
+      fetchLocalUsuarios();
+    } catch {
+      setError('Error al desvincular usuario del local');
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -153,6 +240,35 @@ export default function LocalDetailPage() {
         router.push(`/dashboard/empresas/${empresaId}/locales/${localId}/areas/${area.id}`),
     },
   ];
+
+  const usuarioColumns: ColumnDef<LocalUsuario>[] = [
+    {
+      id: 'nombre',
+      header: 'Nombre',
+      accessorFn: (row) => `${row.nombre} ${row.apellido}`.trim(),
+      sortable: true,
+    },
+    { id: 'email', header: 'Email', accessorKey: 'email' },
+    { id: 'rol', header: 'Rol', accessorKey: 'rol' },
+  ];
+
+  const usuarioActions: RowAction<LocalUsuario>[] = [
+    {
+      label: 'Cambiar Rol',
+      icon: <RefreshCw className="size-4" />,
+      onClick: (user) => handleChangeRol(user.id, user.rol),
+    },
+    {
+      label: 'Desvincular',
+      icon: <Unlink className="size-4" />,
+      onClick: (user) => handleUnlinkUser(user.id),
+      variant: 'destructive',
+    },
+  ];
+
+  const availableUsuarios = empresaUsuarios.filter(
+    (eu) => !localUsuarios.some((lu) => lu.id === eu.id)
+  );
 
   const infoFields = [
     { label: 'Nombre', value: local.nombre },
@@ -242,6 +358,80 @@ export default function LocalDetailPage() {
           }
         />
       </div>
+
+      {/* Usuarios del Local */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-semibold">Usuarios del Local</h3>
+          <Button onClick={handleOpenAssignDialog}>
+            <UserPlus className="size-4" />
+            Asignar Usuario
+          </Button>
+        </div>
+        <DataTable
+          columns={usuarioColumns}
+          data={localUsuarios}
+          searchKey="nombre"
+          searchPlaceholder="Buscar usuarios..."
+          emptyMessage="No hay usuarios asignados a este local."
+          rowActions={usuarioActions}
+        />
+      </div>
+
+      {/* Assign User Dialog */}
+      <Dialog open={assignUserDialogOpen} onOpenChange={setAssignUserDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Asignar Usuario al Local</DialogTitle>
+            <DialogDescription>
+              Selecciona un usuario de la empresa y asígnale un rol en este local.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Usuario</Label>
+              <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar usuario" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableUsuarios.length === 0 ? (
+                    <SelectItem value="_none" disabled>
+                      No hay usuarios disponibles
+                    </SelectItem>
+                  ) : (
+                    availableUsuarios.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.nombre} {u.apellido} ({u.email})
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Rol</Label>
+              <Select value={selectedRol} onValueChange={setSelectedRol}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar rol" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SUPERVISOR">Supervisor</SelectItem>
+                  <SelectItem value="VISOR">Visor</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignUserDialogOpen(false)} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button onClick={handleAssignUser} disabled={submitting || !selectedUserId}>
+              {submitting ? 'Asignando...' : 'Asignar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>

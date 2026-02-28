@@ -223,6 +223,88 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
   });
+
+  // POST /empresas/:id/usuarios - Assign an existing user to this empresa (admin only)
+  fastify.post('/empresas/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { usuarioId } = z.object({ usuarioId: z.string().min(1, 'UsuarioId is required') }).parse(request.body);
+
+      const empresa = await prisma.empresa.findUnique({ where: { id } });
+      if (!empresa) {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Empresa not found',
+        });
+      }
+
+      const usuario = await prisma.usuario.update({
+        where: { id: usuarioId },
+        data: { empresaId: id },
+        select: {
+          id: true,
+          email: true,
+          nombre: true,
+          apellido: true,
+          telefono: true,
+          empresaId: true,
+          rol: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      return usuario;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          error: 'Validation Error',
+          message: error.errors[0]?.message || 'Invalid input',
+        });
+      }
+
+      if ((error as any).code === 'P2025') {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Usuario not found',
+        });
+      }
+
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while assigning usuario to empresa',
+      });
+    }
+  });
+
+  // DELETE /empresas/:id/usuarios/:userId - Remove user from empresa (admin only)
+  fastify.delete('/empresas/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id, userId } = request.params as { id: string; userId: string };
+
+      const usuario = await prisma.usuario.findUnique({ where: { id: userId } });
+      if (!usuario || usuario.empresaId !== id) {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Usuario not found in this empresa',
+        });
+      }
+
+      await prisma.usuario.update({
+        where: { id: userId },
+        data: { empresaId: null },
+      });
+
+      return { message: 'Usuario removed from empresa successfully' };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while removing usuario from empresa',
+      });
+    }
+  });
 };
 
 export default empresasRoutes;

@@ -1,8 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, getLocalRole, getLocalIdFromArea, getLocalIdFromSector } from '../lib/access.js';
 import type { PaginationQuery } from '../types/index.js';
 
 const createSectorSchema = z.object({
@@ -105,6 +104,9 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
               localProductivo: { select: { id: true, nombre: true } },
             },
           },
+          usuarioResponsable: {
+            select: { id: true, nombre: true, apellido: true },
+          },
           unidadesProduccion: {
             select: {
               id: true,
@@ -152,10 +154,28 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /sectores - Create sector (admin only)
-  fastify.post('/sectores', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /sectores - Create sector (admin or supervisor on the parent local)
+  fastify.post('/sectores', async (request, reply) => {
     try {
       const data = createSectorSchema.parse(request.body);
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromArea(data.areaId);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Area not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to create sectores in this local productivo',
+          });
+        }
+      }
 
       const sector = await prisma.sector.create({ data });
 
@@ -176,11 +196,29 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /sectores/:id - Update sector (admin only)
-  fastify.put('/sectores/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /sectores/:id - Update sector (admin or supervisor on the parent local)
+  fastify.put('/sectores/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = updateSectorSchema.parse(request.body);
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromSector(id);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Sector not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to update this sector',
+          });
+        }
+      }
 
       const sector = await prisma.sector.update({
         where: { id },
@@ -211,10 +249,28 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /sectores/:id - Delete sector (admin only)
-  fastify.delete('/sectores/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /sectores/:id - Delete sector (admin or supervisor on the parent local)
+  fastify.delete('/sectores/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localId = await getLocalIdFromSector(id);
+        if (!localId) {
+          return reply.code(404).send({
+            error: 'Not Found',
+            message: 'Sector not found',
+          });
+        }
+        const localRole = await getLocalRole(user.id, localId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to delete this sector',
+          });
+        }
+      }
 
       await prisma.sector.delete({ where: { id } });
 

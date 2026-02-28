@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, getLocalRole } from '../lib/access.js';
 import type { PaginationQuery } from '../types/index.js';
 
 const createLocalSchema = z.object({
@@ -129,6 +129,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
       ]);
 
       const { areas, ...localData } = local;
+      const user = request.user;
 
       return {
         local: localData,
@@ -144,6 +145,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
           bounds: a.bounds,
           sectoresCount: a._count.sectores,
         })),
+        userLocalRole: user.rol === 'ADMIN' ? null : await getLocalRole(user.id, id),
       };
     } catch (error) {
       fastify.log.error(error);
@@ -178,10 +180,22 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /locales/:id - Update local productivo (admin only)
-  fastify.put('/locales/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /locales/:id - Update local productivo (admin or supervisor)
+  fastify.put('/locales/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user;
+
+      if (user.rol !== 'ADMIN') {
+        const localRole = await getLocalRole(user.id, id);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'Solo administradores o supervisores pueden editar locales',
+          });
+        }
+      }
+
       const data = updateLocalSchema.parse(request.body);
 
       const local = await prisma.localProductivo.update({

@@ -5,6 +5,8 @@ export interface JwtPayload {
   id: string;
   email: string;
   rol: Rol;
+  empresaId?: string;
+  esAdminEmpresa: boolean;
 }
 
 // Common pagination query parameters

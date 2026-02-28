@@ -10,6 +10,7 @@ import { DataTable, ColumnDef, RowAction } from '@/components/ui/data-table';
 import { EmpresaForm, EmpresaFormValues } from '@/components/forms/empresa-form';
 import { LocalForm, LocalFormValues } from '@/components/forms/local-form';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -80,7 +81,15 @@ export default function EmpresaDetailPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [localDialogOpen, setLocalDialogOpen] = useState(false);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Assign usuario state
+  const [allUsers, setAllUsers] = useState<
+    { id: string; nombre: string; apellido: string | null; email: string }[]
+  >([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -136,6 +145,49 @@ export default function EmpresaDetailPage() {
     }
   }
 
+  async function fetchAvailableUsers() {
+    try {
+      setLoadingUsers(true);
+      const res = await api.get('/api/usuarios?limit=100');
+      setAllUsers(res.data.data ?? res.data);
+    } catch {
+      setError('Error al cargar los usuarios disponibles');
+    } finally {
+      setLoadingUsers(false);
+    }
+  }
+
+  function handleOpenAssignDialog() {
+    setUserSearch('');
+    setAssignDialogOpen(true);
+    fetchAvailableUsers();
+  }
+
+  async function handleAssignUser(userId: string) {
+    try {
+      setSubmitting(true);
+      await api.post(`/api/empresas/${empresaId}/usuarios`, { usuarioId: userId });
+      setAssignDialogOpen(false);
+      fetchDashboard();
+    } catch {
+      setError('Error al asignar el usuario a la empresa');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleUnlinkUser(userId: string) {
+    try {
+      setSubmitting(true);
+      await api.delete(`/api/empresas/${empresaId}/usuarios/${userId}`);
+      fetchDashboard();
+    } catch {
+      setError('Error al desvincular el usuario de la empresa');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -179,6 +231,15 @@ export default function EmpresaDetailPage() {
     },
     { id: 'email', header: 'Email', accessorKey: 'email' },
     { id: 'rol', header: 'Rol', accessorKey: 'rol' },
+  ];
+
+  const usuarioActions: RowAction<(typeof usuarios)[0]>[] = [
+    {
+      label: 'Desvincular',
+      icon: <Trash2 className="size-4" />,
+      variant: 'destructive',
+      onClick: (usuario) => handleUnlinkUser(usuario.id),
+    },
   ];
 
   const infoFields = [
@@ -280,6 +341,10 @@ export default function EmpresaDetailPage() {
           <h3 className="text-xl font-semibold">
             Usuarios ({stats.totalUsuarios})
           </h3>
+          <Button onClick={handleOpenAssignDialog}>
+            <Plus className="size-4" />
+            Asignar Usuario
+          </Button>
         </div>
         <DataTable
           columns={usuarioColumns}
@@ -287,6 +352,7 @@ export default function EmpresaDetailPage() {
           searchKey="email"
           searchPlaceholder="Buscar usuarios..."
           emptyMessage="No hay usuarios vinculados a esta empresa."
+          rowActions={usuarioActions}
         />
       </div>
 
@@ -359,6 +425,83 @@ export default function EmpresaDetailPage() {
             onSubmit={handleCreateLocal}
             loading={submitting}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Usuario Dialog */}
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Asignar Usuario</DialogTitle>
+            <DialogDescription>
+              Selecciona un usuario para vincularlo a {empresa.razonSocial}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              placeholder="Buscar por nombre o email..."
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+            />
+            {loadingUsers ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Cargando usuarios...
+              </p>
+            ) : (
+              <div className="max-h-64 overflow-y-auto space-y-1">
+                {(() => {
+                  const linkedIds = new Set(usuarios.map((u) => u.id));
+                  const searchLower = userSearch.toLowerCase();
+                  const available = allUsers
+                    .filter((u) => !linkedIds.has(u.id))
+                    .filter(
+                      (u) =>
+                        !userSearch ||
+                        u.nombre.toLowerCase().includes(searchLower) ||
+                        (u.apellido ?? '').toLowerCase().includes(searchLower) ||
+                        u.email.toLowerCase().includes(searchLower)
+                    );
+
+                  if (available.length === 0) {
+                    return (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No hay usuarios disponibles para asignar.
+                      </p>
+                    );
+                  }
+
+                  return available.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      disabled={submitting}
+                      className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50"
+                      onClick={() => handleAssignUser(user.id)}
+                    >
+                      <div className="text-left">
+                        <p className="font-medium">
+                          {user.nombre} {user.apellido ?? ''}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {user.email}
+                        </p>
+                      </div>
+                      <Plus className="size-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAssignDialogOpen(false)}
+              disabled={submitting}
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

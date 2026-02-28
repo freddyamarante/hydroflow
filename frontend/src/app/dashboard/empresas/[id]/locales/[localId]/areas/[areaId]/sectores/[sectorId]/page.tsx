@@ -29,6 +29,7 @@ interface SectorDashboard {
     tipo: string | null;
     detalles: unknown;
     usuarioResponsableId: string | null;
+    usuarioResponsable: { id: string; nombre: string; apellido?: string } | null;
     area: {
       id: string;
       nombre: string;
@@ -115,15 +116,11 @@ export default function SectorDetailPage() {
   async function handleCreateUnidad(values: UnidadFormValues) {
     try {
       setSubmitting(true);
-      const payload: Record<string, unknown> = {
+      await api.post('/api/unidades', {
         nombre: values.nombre,
         sectorId,
         topicMqtt: values.topicMqtt,
-      };
-      if (values.anchoCanal) {
-        payload.configuracion = { ancho_canal: values.anchoCanal };
-      }
-      await api.post('/api/unidades', payload);
+      });
       setUnidadDialogOpen(false);
       fetchDashboard();
     } catch {
@@ -171,6 +168,12 @@ export default function SectorDetailPage() {
   const infoFields = [
     { label: 'Nombre', value: sector.nombre },
     { label: 'Tipo', value: sector.tipo },
+    {
+      label: 'Responsable',
+      value: sector.usuarioResponsable
+        ? `${sector.usuarioResponsable.nombre} ${sector.usuarioResponsable.apellido ?? ''}`.trim()
+        : null,
+    },
   ];
 
   return (

@@ -16,6 +16,10 @@ datasource db {
 
 enum Rol {
   ADMIN
+  USER
+}
+
+enum RolLocal {
   SUPERVISOR
   VISOR
 }
@@ -40,16 +44,17 @@ enum Severidad {
 // ============================================
 
 model Usuario {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  contrasena String
-  nombre    String
-  apellido  String?
-  telefono  String?
-  empresaId String?
-  rol       Rol      @default(VISOR)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  email           String   @unique
+  contrasena      String
+  nombre          String
+  apellido        String?
+  telefono        String?
+  empresaId       String?
+  rol             Rol      @default(USER)
+  esAdminEmpresa  Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   empresa             Empresa?                @relation(fields: [empresaId], references: [id], onDelete: SetNull)
   localesProductivos  UsuarioLocalProductivo[]
@@ -59,8 +64,9 @@ model Usuario {
 }
 
 model UsuarioLocalProductivo {
-  usuarioId        String
+  usuarioId         String
   localProductivoId String
+  rol               RolLocal @default(VISOR)
 
   usuario         Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   localProductivo LocalProductivo @relation(fields: [localProductivoId], references: [id], onDelete: Cascade)

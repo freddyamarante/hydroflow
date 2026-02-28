@@ -208,7 +208,6 @@ async function main() {
         email: 'admin@hydro-flow.io',
         contrasena: hashedPassword,
         rol: 'ADMIN',
-        empresaId: produmarId,
       },
       {
         id: supProdumarId,
@@ -216,8 +215,9 @@ async function main() {
         apellido: 'Mendoza',
         email: 'supervisor@produmar.com',
         contrasena: hashedPassword,
-        rol: 'SUPERVISOR',
+        rol: 'USER',
         empresaId: produmarId,
+        esAdminEmpresa: true,
       },
       {
         id: visorProdumarId,
@@ -225,7 +225,7 @@ async function main() {
         apellido: 'Torres',
         email: 'visor@produmar.com',
         contrasena: hashedPassword,
-        rol: 'VISOR',
+        rol: 'USER',
         empresaId: produmarId,
       },
       {
@@ -234,8 +234,9 @@ async function main() {
         apellido: 'Ramirez',
         email: 'supervisor@acuacorp.com',
         contrasena: hashedPassword,
-        rol: 'SUPERVISOR',
+        rol: 'USER',
         empresaId: acuacorpId,
+        esAdminEmpresa: true,
       },
     ],
   })
@@ -248,17 +249,19 @@ async function main() {
 
   await prisma.usuarioLocalProductivo.createMany({
     data: [
-      // supervisor@produmar → all Produmar locales
+      // supervisor@produmar → all Produmar locales as SUPERVISOR
       ...produmarLocalIds.map((localProductivoId) => ({
         usuarioId: supProdumarId,
         localProductivoId,
+        rol: 'SUPERVISOR' as const,
       })),
-      // visor@produmar → first Produmar local (Finca Delia)
-      { usuarioId: visorProdumarId, localProductivoId: produmarLocalIds[0] },
-      // supervisor@acuacorp → all Acuacorp locales
+      // visor@produmar → first Produmar local (Finca Delia) as VISOR
+      { usuarioId: visorProdumarId, localProductivoId: produmarLocalIds[0], rol: 'VISOR' as const },
+      // supervisor@acuacorp → all Acuacorp locales as SUPERVISOR
       ...acuacorpLocalIds.map((localProductivoId) => ({
         usuarioId: supAcuacorpId,
         localProductivoId,
+        rol: 'SUPERVISOR' as const,
       })),
     ],
   })

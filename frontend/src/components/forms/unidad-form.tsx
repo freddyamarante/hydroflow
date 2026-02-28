@@ -27,7 +27,6 @@ const unidadSchema = z.object({
   nombre: z.string().min(1, 'El nombre es requerido'),
   sectorId: z.string().min(1, 'El sector es requerido'),
   topicMqtt: z.string().min(1, 'El topic MQTT es requerido'),
-  anchoCanal: z.coerce.number().positive('Debe ser mayor a 0').optional(),
 });
 
 export type UnidadFormValues = z.infer<typeof unidadSchema>;
@@ -58,7 +57,6 @@ export function UnidadForm({
       nombre: '',
       sectorId: sectorId ?? '',
       topicMqtt: '',
-      anchoCanal: undefined,
       ...defaultValues,
     },
   });
@@ -126,29 +124,6 @@ export function UnidadForm({
               </FormControl>
               <FormDescription>
                 Formato: hydroflow/local/area/sector/unidad_id
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="anchoCanal"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Ancho del Canal (m)</FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  step="0.1"
-                  placeholder="Ej: 3.0"
-                  {...field}
-                  value={field.value ?? ''}
-                />
-              </FormControl>
-              <FormDescription>
-                Usado para calcular flujo instantaneo
               </FormDescription>
               <FormMessage />
             </FormItem>
