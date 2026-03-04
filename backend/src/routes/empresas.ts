@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import argon2 from 'argon2';
 import prisma from '../lib/prisma.js';
 import { requireAdmin } from '../lib/rbac.js';
 
@@ -94,7 +95,7 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
             select: { id: true, nombre: true, tipoProductivo: true, bounds: true, areaProduccion: true },
           },
           usuarios: {
-            select: { id: true, nombre: true, apellido: true, email: true, rol: true },
+            select: { id: true, nombre: true, apellido: true, email: true, telefono: true, rol: true, esAdminEmpresa: true },
           },
         },
       });
@@ -220,6 +221,86 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'An error occurred while deleting empresa',
+      });
+    }
+  });
+
+  // GET /empresas/:id/usuarios - List users for this empresa (admin only)
+  fastify.get('/empresas/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { page = '1', limit = '100' } = request.query as { page?: string; limit?: string };
+      const pageNum = Math.max(1, parseInt(page));
+      const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
+      const skip = (pageNum - 1) * limitNum;
+
+      const [items, total] = await Promise.all([
+        prisma.usuario.findMany({
+          where: { empresaId: id },
+          select: { id: true, email: true, nombre: true, apellido: true, telefono: true, rol: true, esAdminEmpresa: true },
+          skip,
+          take: limitNum,
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.usuario.count({ where: { empresaId: id } }),
+      ]);
+
+      return { items, total, page: pageNum, totalPages: Math.ceil(total / limitNum) };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while fetching empresa usuarios',
+      });
+    }
+  });
+
+  // POST /empresas/:id/usuarios - Create user within empresa (admin only)
+  fastify.post('/empresas/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const data = z.object({
+        email: z.string().email('Invalid email format'),
+        contrasena: z.string().min(6, 'Password must be at least 6 characters'),
+        nombre: z.string().min(1, 'Nombre is required'),
+        apellido: z.string().optional(),
+        telefono: z.string().optional(),
+        esAdminEmpresa: z.boolean().optional(),
+      }).parse(request.body);
+
+      const existing = await prisma.usuario.findUnique({ where: { email: data.email } });
+      if (existing) {
+        return reply.code(400).send({ error: 'Validation Error', message: 'Email already in use' });
+      }
+
+      const hashedPassword = await argon2.hash(data.contrasena);
+      const usuario = await prisma.usuario.create({
+        data: {
+          email: data.email,
+          contrasena: hashedPassword,
+          nombre: data.nombre,
+          apellido: data.apellido,
+          telefono: data.telefono,
+          esAdminEmpresa: data.esAdminEmpresa,
+          empresaId: id,
+          rol: 'USER',
+        },
+        select: { id: true, email: true, nombre: true, apellido: true, telefono: true, rol: true, esAdminEmpresa: true },
+      });
+
+      return reply.code(201).send(usuario);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          error: 'Validation Error',
+          message: error.errors[0]?.message || 'Invalid input',
+        });
+      }
+
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while creating empresa usuario',
       });
     }
   });

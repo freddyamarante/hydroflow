@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import api from '@/lib/api';
 
 interface LecturasRealtimeResult {
   latest: any | null;
@@ -61,7 +62,26 @@ export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeRe
   }, [unidadId]);
 
   useEffect(() => {
-    connect();
+    if (!unidadId) return;
+
+    // Fetch historical data first, then connect WebSocket
+    api
+      .get(`/api/lecturas?unidadProduccionId=${unidadId}&limit=50`)
+      .then((res) => {
+        const items = res.data.items as any[];
+        // API returns DESC order, charts need ASC
+        const reversed = [...items].reverse();
+        if (reversed.length > 0) {
+          setHistory(reversed);
+          setLatest(reversed[reversed.length - 1]);
+        }
+      })
+      .catch(() => {
+        // silent fail — will still get live data
+      })
+      .finally(() => {
+        connect();
+      });
 
     return () => {
       if (reconnectTimeoutRef.current) {
@@ -71,7 +91,7 @@ export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeRe
         wsRef.current.close();
       }
     };
-  }, [connect]);
+  }, [connect, unidadId]);
 
   return { latest, history, connected };
 }

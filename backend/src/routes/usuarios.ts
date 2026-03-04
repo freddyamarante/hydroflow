@@ -11,7 +11,8 @@ const createUsuarioSchema = z.object({
   apellido: z.string().optional(),
   telefono: z.string().optional(),
   empresaId: z.string().optional().transform(v => v || undefined),
-  rol: z.enum(['ADMIN', 'SUPERVISOR', 'VISOR']).optional(),
+  rol: z.enum(['ADMIN', 'USER']).optional(),
+  esAdminEmpresa: z.boolean().optional(),
 });
 
 const updateUsuarioSchema = z.object({
@@ -21,7 +22,8 @@ const updateUsuarioSchema = z.object({
   apellido: z.string().optional(),
   telefono: z.string().optional(),
   empresaId: z.string().optional().transform(v => v || undefined),
-  rol: z.enum(['ADMIN', 'SUPERVISOR', 'VISOR']).optional(),
+  rol: z.enum(['ADMIN', 'USER']).optional(),
+  esAdminEmpresa: z.boolean().optional(),
 });
 
 const userSelect = {
@@ -32,6 +34,7 @@ const userSelect = {
   telefono: true,
   empresaId: true,
   rol: true,
+  esAdminEmpresa: true,
   createdAt: true,
   updatedAt: true,
 };

@@ -44,6 +44,9 @@ jobs:
             # Recreate nginx so it picks up config changes (git reset creates new inodes)
             docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
 
+            # Reload nginx to re-resolve DNS for new container IPs
+            docker exec hydroflow-nginx nginx -s reload
+
             # Cleanup
             docker image prune -f
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod/v3';
@@ -12,7 +13,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from '@/components/ui/form';
 import {
   Select,
@@ -21,16 +21,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown } from 'lucide-react';
+import { PointEditor } from '@/components/maps/point-editor';
 
 const unidadSchema = z.object({
   nombre: z.string().min(1, 'El nombre es requerido'),
   sectorId: z.string().min(1, 'El sector es requerido'),
   topicMqtt: z.string().min(1, 'El topic MQTT es requerido'),
-  anchoCanal: z.coerce.number().positive('Debe ser mayor a 0').optional(),
+  posicion: z.any().optional(),
 });
 
 export type UnidadFormValues = z.infer<typeof unidadSchema>;
+
+/** Transforms form values to the API payload shape */
+export function transformUnidadPayload(values: UnidadFormValues) {
+  const payload: Record<string, unknown> = {
+    nombre: values.nombre,
+    sectorId: values.sectorId,
+    topicMqtt: values.topicMqtt,
+  };
+  if (values.posicion) {
+    payload.posicion = values.posicion;
+  }
+  return payload;
+}
 
 interface SectorOption {
   id: string;
@@ -43,6 +57,7 @@ interface UnidadFormProps {
   loading?: boolean;
   sectores?: SectorOption[];
   sectorId?: string;
+  parentBounds?: GeoJSON.Polygon | null;
 }
 
 export function UnidadForm({
@@ -51,14 +66,17 @@ export function UnidadForm({
   loading = false,
   sectores = [],
   sectorId,
+  parentBounds,
 }: UnidadFormProps) {
+  const [mapOpen, setMapOpen] = useState(!!defaultValues?.posicion);
+
   const form = useForm<UnidadFormValues>({
     resolver: zodResolver(unidadSchema),
     defaultValues: {
       nombre: '',
       sectorId: sectorId ?? '',
       topicMqtt: '',
-      anchoCanal: undefined,
+      posicion: undefined,
       ...defaultValues,
     },
   });
@@ -124,36 +142,47 @@ export function UnidadForm({
                   {...field}
                 />
               </FormControl>
-              <FormDescription>
+              <p className="text-sm text-muted-foreground">
                 Formato: hydroflow/local/area/sector/unidad_id
-              </FormDescription>
+              </p>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="anchoCanal"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Ancho del Canal (m)</FormLabel>
-              <FormControl>
-                <Input
-                  type="number"
-                  step="0.1"
-                  placeholder="Ej: 3.0"
-                  {...field}
-                  value={field.value ?? ''}
-                />
-              </FormControl>
-              <FormDescription>
-                Usado para calcular flujo instantaneo
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
+        {/* Map section - collapsible */}
+        <div className="border rounded-md">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+            onClick={() => setMapOpen(!mapOpen)}
+          >
+            <span>Ubicacion en Mapa (opcional)</span>
+            <ChevronDown
+              className={`size-4 transition-transform ${mapOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {mapOpen && (
+            <div className="px-4 pb-4">
+              <FormField
+                control={form.control}
+                name="posicion"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <PointEditor
+                        value={field.value as { lat: number; lng: number } | null | undefined}
+                        onChange={field.onChange}
+                        parentBounds={parentBounds}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
           )}
-        />
+        </div>
 
         <Button type="submit" disabled={loading} className="w-full">
           {loading && <Loader2 className="animate-spin" />}

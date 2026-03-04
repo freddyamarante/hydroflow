@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
 
 const baseSchema = {
@@ -27,8 +28,9 @@ const baseSchema = {
   nombre: z.string().min(1, 'El nombre es requerido'),
   apellido: z.string().optional(),
   telefono: z.string().optional(),
-  rol: z.enum(['ADMIN', 'SUPERVISOR', 'VISOR']),
-  empresaId: z.string().optional(),
+  rol: z.enum(['ADMIN', 'USER']),
+  empresaId: z.string().optional().transform(v => (!v || v === '__none__') ? undefined : v),
+  esAdminEmpresa: z.boolean().optional(),
 };
 
 const createSchema = z.object({
@@ -55,6 +57,7 @@ interface UsuarioFormProps {
   onSubmit: (values: UsuarioFormValues) => void | Promise<void>;
   loading?: boolean;
   empresas?: EmpresaOption[];
+  empresaContext?: string;
 }
 
 export function UsuarioForm({
@@ -62,6 +65,7 @@ export function UsuarioForm({
   onSubmit,
   loading = false,
   empresas = [],
+  empresaContext,
 }: UsuarioFormProps) {
   const isEdit = !!defaultValues;
   const schema = isEdit ? editSchema : createSchema;
@@ -73,12 +77,15 @@ export function UsuarioForm({
       nombre: '',
       apellido: '',
       telefono: '',
-      rol: 'VISOR' as const,
-      empresaId: '',
+      rol: empresaContext ? 'USER' as const : 'USER' as const,
+      empresaId: empresaContext ?? '',
+      esAdminEmpresa: false,
       password: '',
       ...defaultValues,
     },
   });
+
+  const watchRol = form.watch('rol');
 
   return (
     <Form {...form}>
@@ -161,33 +168,34 @@ export function UsuarioForm({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="rol"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Rol *</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-              >
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar rol" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="ADMIN">Administrador</SelectItem>
-                  <SelectItem value="SUPERVISOR">Supervisor</SelectItem>
-                  <SelectItem value="VISOR">Visor</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {!empresaContext && (
+          <FormField
+            control={form.control}
+            name="rol"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Rol *</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar rol" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="ADMIN">Administrador</SelectItem>
+                    <SelectItem value="USER">Usuario</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
-        {empresas.length > 0 && (
+        {!empresaContext && empresas.length > 0 && (
           <FormField
             control={form.control}
             name="empresaId"
@@ -204,6 +212,7 @@ export function UsuarioForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
+                    <SelectItem value="__none__">Ninguno</SelectItem>
                     {empresas.map((empresa) => (
                       <SelectItem key={empresa.id} value={empresa.id}>
                         {empresa.razonSocial}
@@ -212,6 +221,29 @@ export function UsuarioForm({
                   </SelectContent>
                 </Select>
                 <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {watchRol !== 'ADMIN' && (
+          <FormField
+            control={form.control}
+            name="esAdminEmpresa"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <div className="space-y-1 leading-none">
+                  <FormLabel>Administrador de Empresa</FormLabel>
+                  <p className="text-sm text-muted-foreground">
+                    Puede gestionar usuarios y locales de su empresa
+                  </p>
+                </div>
               </FormItem>
             )}
           />

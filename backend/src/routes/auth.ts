@@ -46,6 +46,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: true,
           apellido: true,
           rol: true,
+          esAdminEmpresa: true,
+          empresaId: true,
         },
       });
 
@@ -69,6 +71,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         id: user.id,
         email: user.email,
         rol: user.rol,
+        esAdminEmpresa: user.esAdminEmpresa,
+        empresaId: user.empresaId,
       });
 
       // Clear any stale domain-specific cookie (e.g. api-staging.hydro-flow.io)
@@ -83,6 +87,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: user.nombre,
           apellido: user.apellido,
           rol: user.rol,
+          esAdminEmpresa: user.esAdminEmpresa,
+          empresaId: user.empresaId,
         },
       };
     } catch (error) {
@@ -177,6 +183,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: true,
           apellido: true,
           rol: true,
+          esAdminEmpresa: true,
+          empresaId: true,
         },
       });
 
@@ -213,10 +221,22 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const user = request.user;
 
+      // Re-read user from DB to get fresh fields
+      const freshUser = await prisma.usuario.findUnique({
+        where: { id: user.id },
+        select: { id: true, email: true, rol: true, esAdminEmpresa: true, empresaId: true },
+      });
+
+      if (!freshUser) {
+        return reply.code(401).send({ error: 'Unauthorized', message: 'User not found' });
+      }
+
       const token = fastify.jwt.sign({
-        id: user.id,
-        email: user.email,
-        rol: user.rol,
+        id: freshUser.id,
+        email: freshUser.email,
+        rol: freshUser.rol,
+        esAdminEmpresa: freshUser.esAdminEmpresa,
+        empresaId: freshUser.empresaId,
       });
 
       reply.setCookie('token', token, cookieOptions);
