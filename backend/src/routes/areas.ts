@@ -2,8 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
 
 const createAreaSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
@@ -126,6 +125,9 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { sectores, ...areaData } = area;
 
+      const user = request.user as { id: string; rol: Rol };
+      const currentUserLocalRole = await computeUserLocalRole(user.id, area.localProductivoId, user.rol);
+
       return {
         area: areaData,
         stats: {
@@ -140,6 +142,7 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
           unidadesCount: s._count.unidadesProduccion,
           usuarioResponsable: s.usuarioResponsable,
         })),
+        currentUserLocalRole,
       };
     } catch (error) {
       fastify.log.error(error);
@@ -150,8 +153,11 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /areas - Create area (admin only)
-  fastify.post('/areas', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /areas - Create area (supervisor+)
+  fastify.post('/areas', { preHandler: [requireWriteAccess(async (req) => {
+    const body = req.body as { localProductivoId?: string };
+    return body.localProductivoId ?? null;
+  })] }, async (request, reply) => {
     try {
       const data = createAreaSchema.parse(request.body);
 
@@ -174,8 +180,8 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /areas/:id - Update area (admin only)
-  fastify.put('/areas/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /areas/:id - Update area (supervisor+)
+  fastify.put('/areas/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForArea((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = updateAreaSchema.parse(request.body);
@@ -209,8 +215,8 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /areas/:id - Delete area (admin only)
-  fastify.delete('/areas/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /areas/:id - Delete area (supervisor+)
+  fastify.delete('/areas/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForArea((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 

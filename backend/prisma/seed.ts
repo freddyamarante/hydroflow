@@ -208,6 +208,7 @@ async function main() {
         email: 'admin@hydro-flow.io',
         contrasena: hashedPassword,
         rol: 'ADMIN',
+        esAdminEmpresa: false,
         empresaId: produmarId,
       },
       {
@@ -216,7 +217,8 @@ async function main() {
         apellido: 'Mendoza',
         email: 'supervisor@produmar.com',
         contrasena: hashedPassword,
-        rol: 'SUPERVISOR',
+        rol: 'USER',
+        esAdminEmpresa: true,
         empresaId: produmarId,
       },
       {
@@ -225,7 +227,8 @@ async function main() {
         apellido: 'Torres',
         email: 'visor@produmar.com',
         contrasena: hashedPassword,
-        rol: 'VISOR',
+        rol: 'USER',
+        esAdminEmpresa: false,
         empresaId: produmarId,
       },
       {
@@ -234,7 +237,8 @@ async function main() {
         apellido: 'Ramirez',
         email: 'supervisor@acuacorp.com',
         contrasena: hashedPassword,
-        rol: 'SUPERVISOR',
+        rol: 'USER',
+        esAdminEmpresa: true,
         empresaId: acuacorpId,
       },
     ],
@@ -248,17 +252,19 @@ async function main() {
 
   await prisma.usuarioLocalProductivo.createMany({
     data: [
-      // supervisor@produmar → all Produmar locales
+      // supervisor@produmar → all Produmar locales with SUPERVISOR role
       ...produmarLocalIds.map((localProductivoId) => ({
         usuarioId: supProdumarId,
         localProductivoId,
+        rol: 'SUPERVISOR' as const,
       })),
-      // visor@produmar → first Produmar local (Finca Delia)
-      { usuarioId: visorProdumarId, localProductivoId: produmarLocalIds[0] },
-      // supervisor@acuacorp → all Acuacorp locales
+      // visor@produmar → first Produmar local (Finca Delia) with VISOR role
+      { usuarioId: visorProdumarId, localProductivoId: produmarLocalIds[0], rol: 'VISOR' as const },
+      // supervisor@acuacorp → all Acuacorp locales with SUPERVISOR role
       ...acuacorpLocalIds.map((localProductivoId) => ({
         usuarioId: supAcuacorpId,
         localProductivoId,
+        rol: 'SUPERVISOR' as const,
       })),
     ],
   })

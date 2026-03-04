@@ -27,9 +27,11 @@ const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
     onRequest: [fastify.authenticate],
   }, async (request, reply) => {
     try {
-      const { unidadProduccionId, limit = '100' } = request.query as {
+      const { unidadProduccionId, limit = '100', desde, hasta } = request.query as {
         unidadProduccionId?: string;
         limit?: string;
+        desde?: string;
+        hasta?: string;
       };
 
       if (!unidadProduccionId) {
@@ -41,8 +43,15 @@ const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
 
       const limitNum = Math.max(1, Math.min(1000, parseInt(limit)));
 
+      const where: any = { unidadProduccionId };
+      if (desde || hasta) {
+        where.timestamp = {};
+        if (desde) where.timestamp.gte = new Date(desde);
+        if (hasta) where.timestamp.lte = new Date(hasta);
+      }
+
       const lecturas = await prisma.lectura.findMany({
-        where: { unidadProduccionId },
+        where,
         orderBy: { timestamp: 'desc' },
         take: limitNum,
       });

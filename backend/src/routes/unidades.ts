@@ -2,8 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, getLocalIdForSector, getLocalIdForUnidad } from '../lib/access.js';
 
 const createUnidadSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
@@ -91,8 +90,11 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /unidades - Create unidad (admin only)
-  fastify.post('/unidades', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /unidades - Create unidad (supervisor+)
+  fastify.post('/unidades', { preHandler: [requireWriteAccess(async (req) => {
+    const body = req.body as { sectorId?: string };
+    return body.sectorId ? getLocalIdForSector(body.sectorId) : null;
+  })] }, async (request, reply) => {
     try {
       const data = createUnidadSchema.parse(request.body);
 
@@ -115,8 +117,8 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /unidades/:id - Update unidad (admin only)
-  fastify.put('/unidades/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /unidades/:id - Update unidad (supervisor+)
+  fastify.put('/unidades/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForUnidad((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = updateUnidadSchema.parse(request.body);
@@ -150,8 +152,8 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /unidades/:id - Delete unidad (admin only)
-  fastify.delete('/unidades/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /unidades/:id - Delete unidad (supervisor+)
+  fastify.delete('/unidades/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForUnidad((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 

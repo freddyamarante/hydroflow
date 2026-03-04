@@ -9,7 +9,9 @@ import { StatsCard } from '@/components/dashboard/stats-card';
 import { DataTable, ColumnDef, RowAction } from '@/components/ui/data-table';
 import { EmpresaForm, EmpresaFormValues } from '@/components/forms/empresa-form';
 import { LocalForm, LocalFormValues } from '@/components/forms/local-form';
+import { UsuarioForm, UsuarioFormValues } from '@/components/forms/usuario-form';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -63,7 +65,9 @@ interface EmpresaDashboard {
     nombre: string;
     apellido: string | null;
     email: string;
+    telefono: string | null;
     rol: string;
+    esAdminEmpresa: boolean;
   }[];
 }
 
@@ -80,6 +84,10 @@ export default function EmpresaDetailPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [localDialogOpen, setLocalDialogOpen] = useState(false);
+  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [editUserDialogOpen, setEditUserDialogOpen] = useState(false);
+  const [deleteUserDialogOpen, setDeleteUserDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<EmpresaDashboard['usuarios'][0] | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const fetchDashboard = useCallback(async () => {
@@ -136,6 +144,69 @@ export default function EmpresaDetailPage() {
     }
   }
 
+  async function handleCreateUser(values: UsuarioFormValues) {
+    try {
+      setSubmitting(true);
+      const payload: Record<string, unknown> = {
+        email: values.email,
+        nombre: values.nombre,
+        apellido: values.apellido || undefined,
+        telefono: values.telefono || undefined,
+        esAdminEmpresa: values.esAdminEmpresa || false,
+      };
+      if (values.password) {
+        payload.contrasena = values.password;
+      }
+      await api.post(`/api/empresas/${empresaId}/usuarios`, payload);
+      setUserDialogOpen(false);
+      fetchDashboard();
+    } catch {
+      setError('Error al crear el usuario');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleEditUser(values: UsuarioFormValues) {
+    if (!selectedUser) return;
+    try {
+      setSubmitting(true);
+      const payload: Record<string, unknown> = {
+        email: values.email,
+        nombre: values.nombre,
+        apellido: values.apellido || undefined,
+        telefono: values.telefono || undefined,
+        esAdminEmpresa: values.esAdminEmpresa || false,
+      };
+      if (values.password) {
+        payload.contrasena = values.password;
+      }
+      await api.put(`/api/usuarios/${selectedUser.id}`, payload);
+      setEditUserDialogOpen(false);
+      setSelectedUser(null);
+      fetchDashboard();
+    } catch {
+      setError('Error al actualizar el usuario');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteUser() {
+    if (!selectedUser) return;
+    try {
+      setSubmitting(true);
+      await api.delete(`/api/usuarios/${selectedUser.id}`);
+      setDeleteUserDialogOpen(false);
+      setSelectedUser(null);
+      fetchDashboard();
+    } catch {
+      setError('Error al eliminar el usuario');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -178,7 +249,38 @@ export default function EmpresaDetailPage() {
       sortable: true,
     },
     { id: 'email', header: 'Email', accessorKey: 'email' },
-    { id: 'rol', header: 'Rol', accessorKey: 'rol' },
+    {
+      id: 'rol',
+      header: 'Rol',
+      accessorFn: (row) => (
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{row.rol}</Badge>
+          {row.esAdminEmpresa && (
+            <Badge variant="secondary">Admin Empresa</Badge>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const usuarioActions: RowAction<(typeof usuarios)[0]>[] = [
+    {
+      label: 'Editar',
+      icon: <Pencil className="size-4" />,
+      onClick: (usuario) => {
+        setSelectedUser(usuario);
+        setEditUserDialogOpen(true);
+      },
+    },
+    {
+      label: 'Eliminar',
+      icon: <Trash2 className="size-4" />,
+      onClick: (usuario) => {
+        setSelectedUser(usuario);
+        setDeleteUserDialogOpen(true);
+      },
+      variant: 'destructive',
+    },
   ];
 
   const infoFields = [
@@ -280,6 +382,10 @@ export default function EmpresaDetailPage() {
           <h3 className="text-xl font-semibold">
             Usuarios ({stats.totalUsuarios})
           </h3>
+          <Button onClick={() => setUserDialogOpen(true)}>
+            <Plus className="size-4" />
+            Agregar Usuario
+          </Button>
         </div>
         <DataTable
           columns={usuarioColumns}
@@ -287,6 +393,7 @@ export default function EmpresaDetailPage() {
           searchKey="email"
           searchPlaceholder="Buscar usuarios..."
           emptyMessage="No hay usuarios vinculados a esta empresa."
+          rowActions={usuarioActions}
         />
       </div>
 
@@ -359,6 +466,76 @@ export default function EmpresaDetailPage() {
             onSubmit={handleCreateLocal}
             loading={submitting}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* New User Dialog */}
+      <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Agregar Usuario</DialogTitle>
+            <DialogDescription>
+              Crea un nuevo usuario para {empresa.razonSocial}.
+            </DialogDescription>
+          </DialogHeader>
+          <UsuarioForm
+            empresaContext={empresaId}
+            onSubmit={handleCreateUser}
+            loading={submitting}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editUserDialogOpen} onOpenChange={(open) => {
+        setEditUserDialogOpen(open);
+        if (!open) setSelectedUser(null);
+      }}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar Usuario</DialogTitle>
+            <DialogDescription>Modifica los datos del usuario.</DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <UsuarioForm
+              empresaContext={empresaId}
+              defaultValues={{
+                email: selectedUser.email,
+                nombre: selectedUser.nombre,
+                apellido: selectedUser.apellido ?? '',
+                telefono: selectedUser.telefono ?? '',
+                rol: selectedUser.rol as 'ADMIN' | 'USER',
+                esAdminEmpresa: selectedUser.esAdminEmpresa,
+                password: '',
+              }}
+              onSubmit={handleEditUser}
+              loading={submitting}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={deleteUserDialogOpen} onOpenChange={(open) => {
+        setDeleteUserDialogOpen(open);
+        if (!open) setSelectedUser(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar Usuario</DialogTitle>
+            <DialogDescription>
+              Esta accion no se puede deshacer. Se eliminara permanentemente al usuario{' '}
+              <strong>{selectedUser?.nombre} {selectedUser?.apellido ?? ''}</strong> ({selectedUser?.email}).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteUserDialogOpen(false)} disabled={submitting}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteUser} disabled={submitting}>
+              {submitting ? 'Eliminando...' : 'Eliminar'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

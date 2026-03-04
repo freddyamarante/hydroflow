@@ -9,7 +9,9 @@ export interface User {
   email: string;
   nombre: string;
   apellido?: string;
-  rol: 'ADMIN' | 'SUPERVISOR' | 'VISOR';
+  rol: 'ADMIN' | 'USER';
+  esAdminEmpresa: boolean;
+  empresaId?: string | null;
 }
 
 interface AuthContextType {

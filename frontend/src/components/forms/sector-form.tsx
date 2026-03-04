@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod/v3';
@@ -20,13 +21,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown } from 'lucide-react';
+import { BoundsEditor } from '@/components/maps/bounds-editor';
 
 const sectorSchema = z.object({
   nombre: z.string().min(1, 'El nombre es requerido'),
   areaId: z.string().min(1, 'El area es requerida'),
   tipo: z.string().optional(),
-  usuarioResponsableId: z.string().optional(),
+  usuarioResponsableId: z.string().optional().transform(v => (!v || v === '__none__') ? undefined : v),
+  bounds: z.any().optional(),
 });
 
 export type SectorFormValues = z.infer<typeof sectorSchema>;
@@ -49,6 +52,7 @@ interface SectorFormProps {
   areas?: AreaOption[];
   usuarios?: UsuarioOption[];
   areaId?: string;
+  parentBounds?: GeoJSON.Polygon | null;
 }
 
 export function SectorForm({
@@ -58,7 +62,10 @@ export function SectorForm({
   areas = [],
   usuarios = [],
   areaId,
+  parentBounds,
 }: SectorFormProps) {
+  const [mapOpen, setMapOpen] = useState(!!defaultValues?.bounds);
+
   const form = useForm<SectorFormValues>({
     resolver: zodResolver(sectorSchema),
     defaultValues: {
@@ -66,6 +73,7 @@ export function SectorForm({
       areaId: areaId ?? '',
       tipo: '',
       usuarioResponsableId: '',
+      bounds: undefined,
       ...defaultValues,
     },
   });
@@ -150,6 +158,7 @@ export function SectorForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
+                    <SelectItem value="__none__">Ninguno</SelectItem>
                     {usuarios.map((usuario) => (
                       <SelectItem key={usuario.id} value={usuario.id}>
                         {usuario.nombre} {usuario.apellido ?? ''}
@@ -162,6 +171,40 @@ export function SectorForm({
             )}
           />
         )}
+
+        {/* Map section - collapsible */}
+        <div className="border rounded-md">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+            onClick={() => setMapOpen(!mapOpen)}
+          >
+            <span>Ubicacion en Mapa (opcional)</span>
+            <ChevronDown
+              className={`size-4 transition-transform ${mapOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {mapOpen && (
+            <div className="px-4 pb-4">
+              <FormField
+                control={form.control}
+                name="bounds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <BoundsEditor
+                        value={field.value as GeoJSON.Polygon | null | undefined}
+                        onChange={field.onChange}
+                        parentBounds={parentBounds}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          )}
+        </div>
 
         <Button type="submit" disabled={loading} className="w-full">
           {loading && <Loader2 className="animate-spin" />}

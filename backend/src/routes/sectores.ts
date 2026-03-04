@@ -2,8 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, getLocalIdForSector, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
 
 const createSectorSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
@@ -108,6 +107,9 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
               localProductivo: { select: { id: true, nombre: true } },
             },
           },
+          usuarioResponsable: {
+            select: { id: true, nombre: true, apellido: true },
+          },
           unidadesProduccion: {
             select: {
               id: true,
@@ -133,6 +135,10 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { unidadesProduccion, ...sectorData } = sector;
 
+      const user = request.user as { id: string; rol: Rol };
+      const localId = sector.area.localProductivo.id;
+      const currentUserLocalRole = await computeUserLocalRole(user.id, localId, user.rol);
+
       return {
         sector: sectorData,
         stats: {
@@ -145,6 +151,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
           posicion: u.posicion,
           ultimaLectura: u.lecturas[0]?.timestamp ?? null,
         })),
+        currentUserLocalRole,
       };
     } catch (error) {
       fastify.log.error(error);
@@ -155,8 +162,11 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /sectores - Create sector (admin only)
-  fastify.post('/sectores', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /sectores - Create sector (supervisor+)
+  fastify.post('/sectores', { preHandler: [requireWriteAccess(async (req) => {
+    const body = req.body as { areaId?: string };
+    return body.areaId ? getLocalIdForArea(body.areaId) : null;
+  })] }, async (request, reply) => {
     try {
       const data = createSectorSchema.parse(request.body);
 
@@ -179,8 +189,8 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /sectores/:id - Update sector (admin only)
-  fastify.put('/sectores/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /sectores/:id - Update sector (supervisor+)
+  fastify.put('/sectores/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = updateSectorSchema.parse(request.body);
@@ -214,8 +224,8 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /sectores/:id - Delete sector (admin only)
-  fastify.delete('/sectores/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /sectores/:id - Delete sector (supervisor+)
+  fastify.delete('/sectores/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 

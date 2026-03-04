@@ -3,7 +3,7 @@ import { Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, computeUserLocalRole } from '../lib/access.js';
 
 const createLocalSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
@@ -133,6 +133,9 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { areas, ...localData } = local;
 
+      const user = request.user as { id: string; rol: Rol };
+      const currentUserLocalRole = await computeUserLocalRole(user.id, id, user.rol);
+
       return {
         local: localData,
         stats: {
@@ -147,6 +150,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
           bounds: a.bounds,
           sectoresCount: a._count.sectores,
         })),
+        currentUserLocalRole,
       };
     } catch (error) {
       fastify.log.error(error);
@@ -181,8 +185,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /locales/:id - Update local productivo (admin only)
-  fastify.put('/locales/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /locales/:id - Update local productivo (supervisor+ can edit)
+  fastify.put('/locales/:id', { preHandler: [requireWriteAccess(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = updateLocalSchema.parse(request.body);
@@ -236,6 +240,201 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'An error occurred while deleting local productivo',
+      });
+    }
+  });
+
+  // GET /locales/:id/usuarios - List assigned users with their local roles (admin only)
+  fastify.get('/locales/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+
+      const assignments = await prisma.usuarioLocalProductivo.findMany({
+        where: { localProductivoId: id },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellido: true, email: true } },
+        },
+      });
+
+      const items = assignments.map((a) => ({
+        usuarioId: a.usuario.id,
+        nombre: a.usuario.nombre,
+        apellido: a.usuario.apellido,
+        email: a.usuario.email,
+        rol: a.rol,
+      }));
+
+      return { items };
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while fetching local usuarios',
+      });
+    }
+  });
+
+  // POST /locales/:id/usuarios - Assign user to local (admin only)
+  fastify.post('/locales/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const data = z.object({
+        usuarioId: z.string().min(1, 'Usuario ID is required'),
+        rol: z.enum(['SUPERVISOR', 'VISOR']),
+      }).parse(request.body);
+
+      // Validate: user belongs to the same empresa that owns the local
+      const local = await prisma.localProductivo.findUnique({
+        where: { id },
+        select: { empresaId: true },
+      });
+      if (!local) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Local productivo not found' });
+      }
+
+      const usuario = await prisma.usuario.findUnique({
+        where: { id: data.usuarioId },
+        select: { empresaId: true },
+      });
+      if (!usuario) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Usuario not found' });
+      }
+
+      if (usuario.empresaId !== local.empresaId) {
+        return reply.code(400).send({
+          error: 'Validation Error',
+          message: 'El usuario no pertenece a la misma empresa del local',
+        });
+      }
+
+      // Check if already assigned
+      const existing = await prisma.usuarioLocalProductivo.findUnique({
+        where: {
+          usuarioId_localProductivoId: {
+            usuarioId: data.usuarioId,
+            localProductivoId: id,
+          },
+        },
+      });
+      if (existing) {
+        return reply.code(400).send({
+          error: 'Validation Error',
+          message: 'El usuario ya esta asignado a este local',
+        });
+      }
+
+      const assignment = await prisma.usuarioLocalProductivo.create({
+        data: {
+          usuarioId: data.usuarioId,
+          localProductivoId: id,
+          rol: data.rol,
+        },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellido: true, email: true } },
+        },
+      });
+
+      return reply.code(201).send({
+        usuarioId: assignment.usuario.id,
+        nombre: assignment.usuario.nombre,
+        apellido: assignment.usuario.apellido,
+        email: assignment.usuario.email,
+        rol: assignment.rol,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          error: 'Validation Error',
+          message: error.errors[0]?.message || 'Invalid input',
+        });
+      }
+
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while assigning usuario to local',
+      });
+    }
+  });
+
+  // PUT /locales/:id/usuarios/:userId - Update local-level role (admin only)
+  fastify.put('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id, userId } = request.params as { id: string; userId: string };
+      const data = z.object({
+        rol: z.enum(['SUPERVISOR', 'VISOR']),
+      }).parse(request.body);
+
+      const assignment = await prisma.usuarioLocalProductivo.update({
+        where: {
+          usuarioId_localProductivoId: {
+            usuarioId: userId,
+            localProductivoId: id,
+          },
+        },
+        data: { rol: data.rol },
+        include: {
+          usuario: { select: { id: true, nombre: true, apellido: true, email: true } },
+        },
+      });
+
+      return {
+        usuarioId: assignment.usuario.id,
+        nombre: assignment.usuario.nombre,
+        apellido: assignment.usuario.apellido,
+        email: assignment.usuario.email,
+        rol: assignment.rol,
+      };
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          error: 'Validation Error',
+          message: error.errors[0]?.message || 'Invalid input',
+        });
+      }
+
+      if ((error as any).code === 'P2025') {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Assignment not found',
+        });
+      }
+
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while updating local usuario role',
+      });
+    }
+  });
+
+  // DELETE /locales/:id/usuarios/:userId - Remove assignment (admin only)
+  fastify.delete('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+    try {
+      const { id, userId } = request.params as { id: string; userId: string };
+
+      await prisma.usuarioLocalProductivo.delete({
+        where: {
+          usuarioId_localProductivoId: {
+            usuarioId: userId,
+            localProductivoId: id,
+          },
+        },
+      });
+
+      return { message: 'Usuario removed from local successfully' };
+    } catch (error) {
+      if ((error as any).code === 'P2025') {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Assignment not found',
+        });
+      }
+
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while removing usuario from local',
       });
     }
   });

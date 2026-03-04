@@ -32,7 +32,7 @@ const empresaSchema = z.object({
   ubicacionDomiciliaria: z.string().optional(),
   areaProduccion: z.string().optional(),
   paginaWeb: z.string().optional(),
-  grupoCorporativoId: z.string().optional(),
+  grupoCorporativoId: z.string().optional().transform(v => (!v || v === '__none__') ? undefined : v),
 });
 
 export type EmpresaFormValues = z.infer<typeof empresaSchema>;
@@ -222,6 +222,7 @@ export function EmpresaForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
+                    <SelectItem value="__none__">Ninguno</SelectItem>
                     {gruposCorporativos.map((grupo) => (
                       <SelectItem key={grupo.id} value={grupo.id}>
                         {grupo.razonSocial}

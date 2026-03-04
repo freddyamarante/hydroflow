@@ -23,7 +23,8 @@ interface Usuario {
   apellido: string | null;
   telefono: string | null;
   empresaId: string | null;
-  rol: 'ADMIN' | 'SUPERVISOR' | 'VISOR';
+  rol: 'ADMIN' | 'USER';
+  esAdminEmpresa: boolean;
   createdAt: string;
 }
 
@@ -34,14 +35,12 @@ interface Empresa {
 
 const rolBadgeVariant: Record<string, 'default' | 'secondary' | 'outline'> = {
   ADMIN: 'default',
-  SUPERVISOR: 'secondary',
-  VISOR: 'outline',
+  USER: 'outline',
 };
 
 const rolLabel: Record<string, string> = {
   ADMIN: 'Administrador',
-  SUPERVISOR: 'Supervisor',
-  VISOR: 'Visor',
+  USER: 'Usuario',
 };
 
 export default function UsuariosPage() {

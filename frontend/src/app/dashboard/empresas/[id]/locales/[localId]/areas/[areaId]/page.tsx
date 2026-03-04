@@ -26,7 +26,8 @@ interface AreaDashboard {
     nombre: string;
     localProductivoId: string;
     actividadProductiva: string | null;
-    localProductivo: { id: string; nombre: string };
+    bounds: unknown;
+    localProductivo: { id: string; nombre: string; bounds: unknown };
   };
   stats: {
     totalSectores: number;
@@ -39,6 +40,7 @@ interface AreaDashboard {
     unidadesCount: number;
     usuarioResponsable: { id: string; nombre: string } | null;
   }[];
+  currentUserLocalRole: 'ADMIN' | 'SUPERVISOR' | 'VISOR' | null;
 }
 
 export default function AreaDetailPage() {
@@ -57,22 +59,29 @@ export default function AreaDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sectorDialogOpen, setSectorDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [localUsuarios, setLocalUsuarios] = useState<{ id: string; nombre: string; apellido?: string | null }[]>([]);
 
   const fetchDashboard = useCallback(async () => {
     try {
       setLoading(true);
-      const [areaRes, empresaRes] = await Promise.all([
+      const [areaRes, empresaRes, localUsersRes] = await Promise.all([
         api.get(`/api/areas/${areaId}/dashboard`),
         api.get(`/api/empresas/${empresaId}`),
+        api.get(`/api/locales/${localId}/usuarios`).catch(() => ({ data: { items: [] } })),
       ]);
       setData(areaRes.data);
       setEmpresaName(empresaRes.data.razonSocial);
+      setLocalUsuarios(localUsersRes.data.items.map((u: any) => ({
+        id: u.usuarioId,
+        nombre: u.nombre,
+        apellido: u.apellido,
+      })));
     } catch {
-      setError('Error al cargar los datos del área');
+      setError('Error al cargar los datos del area');
     } finally {
       setLoading(false);
     }
-  }, [areaId, empresaId]);
+  }, [areaId, empresaId, localId]);
 
   useEffect(() => {
     fetchDashboard();
@@ -85,7 +94,7 @@ export default function AreaDetailPage() {
       setEditDialogOpen(false);
       fetchDashboard();
     } catch {
-      setError('Error al actualizar el área');
+      setError('Error al actualizar el area');
     } finally {
       setSubmitting(false);
     }
@@ -97,7 +106,7 @@ export default function AreaDetailPage() {
       await api.delete(`/api/areas/${areaId}`);
       router.push(`/dashboard/empresas/${empresaId}/locales/${localId}`);
     } catch {
-      setError('Error al eliminar el área');
+      setError('Error al eliminar el area');
     } finally {
       setSubmitting(false);
     }
@@ -134,9 +143,12 @@ export default function AreaDetailPage() {
 
   if (!data) return null;
 
-  const { area, stats, sectores } = data;
+  const { area, stats, sectores, currentUserLocalRole } = data;
+  const canWrite = currentUserLocalRole === 'ADMIN' || currentUserLocalRole === 'SUPERVISOR';
 
   const basePath = `/dashboard/empresas/${empresaId}/locales/${localId}`;
+  const areaBounds = area.bounds as GeoJSON.Polygon | null;
+  const localBounds = area.localProductivo.bounds as GeoJSON.Polygon | null;
 
   const sectorColumns: ColumnDef<(typeof sectores)[0]>[] = [
     { id: 'nombre', header: 'Nombre', accessorKey: 'nombre', sortable: true },
@@ -181,16 +193,18 @@ export default function AreaDetailPage() {
             <p className="text-muted-foreground">{area.actividadProductiva}</p>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
-            <Pencil className="size-4" />
-            Editar
-          </Button>
-          <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-            <Trash2 className="size-4" />
-            Eliminar
-          </Button>
-        </div>
+        {canWrite && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
+              <Pencil className="size-4" />
+              Editar
+            </Button>
+            <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
+              <Trash2 className="size-4" />
+              Eliminar
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -209,10 +223,12 @@ export default function AreaDetailPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-semibold">Sectores</h3>
-          <Button onClick={() => setSectorDialogOpen(true)}>
-            <Plus className="size-4" />
-            Nuevo Sector
-          </Button>
+          {canWrite && (
+            <Button onClick={() => setSectorDialogOpen(true)}>
+              <Plus className="size-4" />
+              Nuevo Sector
+            </Button>
+          )}
         </div>
         <DataTable
           columns={sectorColumns}
@@ -231,8 +247,8 @@ export default function AreaDetailPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Editar Área</DialogTitle>
-            <DialogDescription>Modifica los datos del área.</DialogDescription>
+            <DialogTitle>Editar Area</DialogTitle>
+            <DialogDescription>Modifica los datos del area.</DialogDescription>
           </DialogHeader>
           <AreaForm
             localProductivoId={localId}
@@ -240,7 +256,9 @@ export default function AreaDetailPage() {
               nombre: area.nombre,
               localProductivoId: area.localProductivoId,
               actividadProductiva: area.actividadProductiva ?? '',
+              bounds: areaBounds ?? undefined,
             }}
+            parentBounds={localBounds}
             onSubmit={handleEditSubmit}
             loading={submitting}
           />
@@ -251,9 +269,9 @@ export default function AreaDetailPage() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar Área</DialogTitle>
+            <DialogTitle>Eliminar Area</DialogTitle>
             <DialogDescription>
-              Esta acción no se puede deshacer. Se eliminará permanentemente{' '}
+              Esta accion no se puede deshacer. Se eliminara permanentemente{' '}
               <strong>{area.nombre}</strong> y todos sus sectores y unidades.
             </DialogDescription>
           </DialogHeader>
@@ -279,8 +297,10 @@ export default function AreaDetailPage() {
           </DialogHeader>
           <SectorForm
             areaId={areaId}
+            usuarios={localUsuarios}
             onSubmit={handleCreateSector}
             loading={submitting}
+            parentBounds={areaBounds}
           />
         </DialogContent>
       </Dialog>
