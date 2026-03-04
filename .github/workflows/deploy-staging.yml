@@ -23,6 +23,11 @@ jobs:
           command_timeout: 20m
           script: |
             set -e
+
+            # Free disk space before anything else
+            docker system prune -af
+            docker builder prune -af
+
             cd /opt/hydroflow/hydroflow
 
             # Pull latest code (reset local changes from manual edits)
@@ -33,8 +38,8 @@ jobs:
             # Ensure shared proxy network exists
             docker network create hydroflow-proxy 2>/dev/null || true
 
-            # Build and deploy staging services (no-cache to ensure fresh build)
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build --no-cache
+            # Build and deploy staging services
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
 
             # Push schema to DB and re-seed
