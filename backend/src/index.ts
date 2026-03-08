@@ -13,6 +13,8 @@ import unidadesRoutes from './routes/unidades.js';
 import lecturasRoutes from './routes/lecturas.js';
 import gruposCorporativosRoutes from './routes/grupos-corporativos.js';
 import usuariosRoutes from './routes/usuarios.js';
+import localUsuariosRoutes from './routes/local-usuarios.js';
+import dispositivosRoutes from './routes/dispositivos.js';
 import adminRoutes from './routes/admin.js';
 import meRoutes from './routes/me.js';
 import { connectMqtt, disconnectMqtt, getMqttClient } from './services/mqtt.js';
@@ -55,6 +57,8 @@ await fastify.register(unidadesRoutes, { prefix: '/api' });
 await fastify.register(lecturasRoutes, { prefix: '/api' });
 await fastify.register(gruposCorporativosRoutes, { prefix: '/api' });
 await fastify.register(usuariosRoutes, { prefix: '/api' });
+await fastify.register(localUsuariosRoutes, { prefix: '/api' });
+await fastify.register(dispositivosRoutes, { prefix: '/api' });
 await fastify.register(adminRoutes, { prefix: '/api' });
 await fastify.register(meRoutes, { prefix: '/api' });
 
@@ -108,6 +112,8 @@ fastify.get('/', async () => {
         areas: '/api/areas',
         sectores: '/api/sectores',
         unidades: '/api/unidades',
+        dispositivos: '/api/dispositivos',
+        tiposDispositivo: '/api/tipos-dispositivo',
         lecturas: '/api/lecturas',
         ws: '/api/ws/lecturas/:unidadId',
       },

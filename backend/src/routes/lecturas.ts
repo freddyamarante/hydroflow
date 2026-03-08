@@ -13,6 +13,11 @@ const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
+    if (request.user.rol === 'ADMIN') {
+      socket.close(1008, 'Los administradores no tienen acceso a lecturas individuales');
+      return;
+    }
+
     const { unidadId } = request.params as { unidadId: string };
 
     addWsConnection(unidadId, socket);
@@ -26,6 +31,13 @@ const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/lecturas', {
     onRequest: [fastify.authenticate],
   }, async (request, reply) => {
+    if (request.user.rol === 'ADMIN') {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'Los administradores no tienen acceso a lecturas individuales',
+      });
+    }
+
     try {
       const { unidadProduccionId, limit = '100', desde, hasta } = request.query as {
         unidadProduccionId?: string;

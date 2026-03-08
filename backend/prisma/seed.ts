@@ -17,6 +17,8 @@ async function main() {
   await prisma.regla.deleteMany()
   await prisma.equipo.deleteMany()
   await prisma.unidadProduccion.deleteMany()
+  await prisma.dispositivo.deleteMany()
+  await prisma.tipoDispositivo.deleteMany()
   await prisma.sector.deleteMany()
   await prisma.area.deleteMany()
   await prisma.usuarioLocalProductivo.deleteMany()
@@ -188,6 +190,15 @@ async function main() {
   await prisma.equipo.createMany({ data: equipoRecords })
   console.log(`Created ${equipoRecords.length} equipos`)
 
+  // Seed device types
+  await prisma.tipoDispositivo.createMany({
+    data: [
+      { codigo: 'PLC', nombre: 'Controlador Lógico Programable' },
+      { codigo: 'NOD', nombre: 'Nodo IOT' },
+    ],
+  })
+  console.log('Created 2 tipos de dispositivo')
+
   // ------------------------------------------------------------------
   // Users
   // ------------------------------------------------------------------
@@ -218,8 +229,8 @@ async function main() {
         email: 'supervisor@produmar.com',
         contrasena: hashedPassword,
         rol: 'USER',
-        esAdminEmpresa: true,
         empresaId: produmarId,
+        esAdminEmpresa: true,
       },
       {
         id: visorProdumarId,
@@ -228,8 +239,8 @@ async function main() {
         email: 'visor@produmar.com',
         contrasena: hashedPassword,
         rol: 'USER',
-        esAdminEmpresa: false,
         empresaId: produmarId,
+        esAdminEmpresa: false,
       },
       {
         id: supAcuacorpId,
@@ -238,8 +249,8 @@ async function main() {
         email: 'supervisor@acuacorp.com',
         contrasena: hashedPassword,
         rol: 'USER',
-        esAdminEmpresa: true,
         empresaId: acuacorpId,
+        esAdminEmpresa: true,
       },
     ],
   })

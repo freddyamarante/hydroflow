@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -27,8 +28,9 @@ import { PointEditor } from '@/components/maps/point-editor';
 const unidadSchema = z.object({
   nombre: z.string().min(1, 'El nombre es requerido'),
   sectorId: z.string().min(1, 'El sector es requerido'),
-  topicMqtt: z.string().min(1, 'El topic MQTT es requerido'),
+  topicMqtt: z.string().optional(),
   posicion: z.any().optional(),
+  dispositivoId: z.string().optional(),
 });
 
 export type UnidadFormValues = z.infer<typeof unidadSchema>;
@@ -38,17 +40,22 @@ export function transformUnidadPayload(values: UnidadFormValues) {
   const payload: Record<string, unknown> = {
     nombre: values.nombre,
     sectorId: values.sectorId,
-    topicMqtt: values.topicMqtt,
   };
-  if (values.posicion) {
-    payload.posicion = values.posicion;
-  }
+  if (values.topicMqtt) payload.topicMqtt = values.topicMqtt;
+  if (values.posicion) payload.posicion = values.posicion;
+  if (values.dispositivoId) payload.dispositivoId = values.dispositivoId;
   return payload;
 }
 
 interface SectorOption {
   id: string;
   nombre: string;
+}
+
+interface DispositivoOption {
+  id: string;
+  codigo: string;
+  tipoDispositivo: { codigo: string; nombre: string };
 }
 
 interface UnidadFormProps {
@@ -58,6 +65,7 @@ interface UnidadFormProps {
   sectores?: SectorOption[];
   sectorId?: string;
   parentBounds?: GeoJSON.Polygon | null;
+  dispositivos?: DispositivoOption[];
 }
 
 export function UnidadForm({
@@ -67,6 +75,7 @@ export function UnidadForm({
   sectores = [],
   sectorId,
   parentBounds,
+  dispositivos = [],
 }: UnidadFormProps) {
   const [mapOpen, setMapOpen] = useState(!!defaultValues?.posicion);
 
@@ -77,11 +86,14 @@ export function UnidadForm({
       sectorId: sectorId ?? '',
       topicMqtt: '',
       posicion: undefined,
+      dispositivoId: '',
       ...defaultValues,
     },
   });
 
   const isEdit = !!defaultValues;
+  const selectedDispositivoId = form.watch('dispositivoId');
+  const hasDispositivo = !!selectedDispositivoId;
 
   return (
     <Form {...form}>
@@ -130,25 +142,62 @@ export function UnidadForm({
           />
         )}
 
-        <FormField
-          control={form.control}
-          name="topicMqtt"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Topic MQTT *</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="hydroflow/local/area/sector/unidad_id"
-                  {...field}
-                />
-              </FormControl>
-              <p className="text-sm text-muted-foreground">
-                Formato: hydroflow/local/area/sector/unidad_id
-              </p>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {dispositivos.length > 0 && (
+          <FormField
+            control={form.control}
+            name="dispositivoId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Dispositivo</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar dispositivo (opcional)" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {dispositivos.map((disp) => (
+                      <SelectItem key={disp.id} value={disp.id}>
+                        {disp.codigo} ({disp.tipoDispositivo.codigo})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {hasDispositivo && (
+                  <FormDescription>
+                    El topic MQTT sera generado automaticamente
+                  </FormDescription>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {!hasDispositivo && (
+          <FormField
+            control={form.control}
+            name="topicMqtt"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Topic MQTT</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="hydroflow/local/area/sector/unidad_id"
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  Formato: hydroflow/local/area/sector/unidad_id. Dejar vacio si se selecciona un dispositivo.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         {/* Map section - collapsible */}
         <div className="border rounded-md">
