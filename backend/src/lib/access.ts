@@ -7,7 +7,7 @@ export async function getUserLocalIds(userId: string, rol: Rol): Promise<string[
     const locales = await prisma.localProductivo.findMany({
       select: { id: true },
     });
-    return locales.map((l) => l.id);
+    return locales.map((l: { id: string }) => l.id);
   }
 
   const links = await prisma.usuarioLocalProductivo.findMany({
@@ -15,7 +15,7 @@ export async function getUserLocalIds(userId: string, rol: Rol): Promise<string[
     select: { localProductivoId: true },
   });
 
-  return links.map((l) => l.localProductivoId);
+  return links.map((l: { localProductivoId: string }) => l.localProductivoId);
 }
 
 export async function canAccessLocal(userId: string, localId: string, rol: Rol): Promise<boolean> {
@@ -111,6 +111,19 @@ export async function getLocalIdForUnidad(unidadId: string): Promise<string | nu
   });
   return unidad?.sector.area.localProductivoId ?? null;
 }
+
+export async function getLocalIdFromDispositivo(dispositivoId: string): Promise<string | null> {
+  const dispositivo = await prisma.dispositivo.findUnique({
+    where: { id: dispositivoId },
+    select: { localProductivoId: true },
+  });
+  return dispositivo?.localProductivoId ?? null;
+}
+
+// Aliases for backward compatibility
+export const getLocalIdFromArea = getLocalIdForArea;
+export const getLocalIdFromSector = getLocalIdForSector;
+export const getLocalIdFromUnidad = getLocalIdForUnidad;
 
 /**
  * Factory that creates a preHandler to check write access.

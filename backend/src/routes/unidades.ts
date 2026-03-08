@@ -4,13 +4,34 @@ import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { getUserLocalIds, requireWriteAccess, getLocalIdForSector, getLocalIdForUnidad } from '../lib/access.js';
 
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+}
+
+async function deriveTopicMqtt(dispositivoId: string, sectorId: string, unidadNombre: string): Promise<string> {
+  const sector = await prisma.sector.findUnique({
+    where: { id: sectorId },
+    include: { area: { include: { localProductivo: true } } },
+  });
+  if (!sector) throw new Error('Sector not found');
+
+  const dispositivo = await prisma.dispositivo.findUnique({
+    where: { id: dispositivoId },
+  });
+  if (!dispositivo) throw new Error('Dispositivo not found');
+
+  const local = sector.area.localProductivo;
+  return `hydroflow/${slugify(local.nombre)}/${slugify(sector.area.nombre)}/${slugify(sector.nombre)}/${dispositivo.codigo}/${slugify(unidadNombre)}`;
+}
+
 const createUnidadSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   sectorId: z.string().min(1, 'Sector ID is required'),
   posicion: z.any().optional(),
   detalles: z.any().optional(),
   tipoModuloId: z.string().optional(),
-  topicMqtt: z.string().min(1, 'MQTT topic is required'),
+  topicMqtt: z.string().optional(),
+  dispositivoId: z.string().optional(),
   configuracion: z.any().optional(),
 });
 
@@ -45,6 +66,10 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: {
+            sector: { select: { id: true, nombre: true, area: { select: { id: true, nombre: true } } } },
+            dispositivo: { select: { id: true, codigo: true, tipoDispositivo: { select: { codigo: true, nombre: true } } } },
+          },
         }),
         prisma.unidadProduccion.count({ where }),
       ]);
@@ -71,6 +96,10 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const unidad = await prisma.unidadProduccion.findUnique({
         where: { id },
+        include: {
+          sector: { select: { id: true, nombre: true, area: { select: { id: true, nombre: true, localProductivo: { select: { id: true, nombre: true } } } } } },
+          dispositivo: { select: { id: true, codigo: true, tipoDispositivo: { select: { codigo: true, nombre: true } } } },
+        },
       });
 
       if (!unidad) {
@@ -97,6 +126,10 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
   })] }, async (request, reply) => {
     try {
       const data = createUnidadSchema.parse(request.body);
+
+      if (data.dispositivoId && !data.topicMqtt) {
+        data.topicMqtt = await deriveTopicMqtt(data.dispositivoId, data.sectorId, data.nombre);
+      }
 
       const unidad = await prisma.unidadProduccion.create({ data });
 

@@ -44,17 +44,17 @@ enum Severidad {
 // ============================================
 
 model Usuario {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  contrasena String
-  nombre    String
-  apellido  String?
-  telefono  String?
+  id              String   @id @default(cuid())
+  email           String   @unique
+  contrasena      String
+  nombre          String
+  apellido        String?
+  telefono        String?
   empresaId       String?
   rol             Rol      @default(USER)
   esAdminEmpresa  Boolean  @default(false)
   createdAt       DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt       DateTime @updatedAt
 
   empresa             Empresa?                @relation(fields: [empresaId], references: [id], onDelete: SetNull)
   localesProductivos  UsuarioLocalProductivo[]
@@ -64,9 +64,9 @@ model Usuario {
 }
 
 model UsuarioLocalProductivo {
-  usuarioId        String
+  usuarioId         String
   localProductivoId String
-  rol              RolLocal @default(VISOR)
+  rol               RolLocal @default(VISOR)
 
   usuario         Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   localProductivo LocalProductivo @relation(fields: [localProductivoId], references: [id], onDelete: Cascade)
@@ -131,9 +131,10 @@ model LocalProductivo {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  empresa  Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  areas    Area[]
-  usuarios UsuarioLocalProductivo[]
+  empresa      Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  areas        Area[]
+  usuarios     UsuarioLocalProductivo[]
+  dispositivos Dispositivo[]
 
   @@map("local_productivo")
 }
@@ -169,28 +170,31 @@ model Sector {
   area                Area               @relation(fields: [areaId], references: [id], onDelete: Cascade)
   usuarioResponsable  Usuario?           @relation(fields: [usuarioResponsableId], references: [id], onDelete: SetNull)
   unidadesProduccion  UnidadProduccion[]
+  dispositivos        Dispositivo[]
 
   @@map("sector")
 }
 
 // Level 6: Production Unit
 model UnidadProduccion {
-  id            String   @id @default(cuid())
-  nombre        String
-  sectorId      String
-  posicion      Json?
-  detalles      Json?
-  tipoModuloId  String?
-  topicMqtt     String   @unique
-  configuracion Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  nombre         String
+  sectorId       String
+  posicion       Json?
+  detalles       Json?
+  tipoModuloId   String?
+  topicMqtt      String?  @unique
+  dispositivoId  String?
+  configuracion  Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  sector   Sector    @relation(fields: [sectorId], references: [id], onDelete: Cascade)
-  lecturas Lectura[]
-  reglas   Regla[]
-  alertas  Alerta[]
-  equipos  Equipo[]
+  sector      Sector       @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  dispositivo Dispositivo? @relation(fields: [dispositivoId], references: [id], onDelete: SetNull)
+  lecturas    Lectura[]
+  reglas      Regla[]
+  alertas     Alerta[]
+  equipos     Equipo[]
 
   @@map("unidad_produccion")
 }
@@ -210,6 +214,43 @@ model Equipo {
   unidadProduccion UnidadProduccion @relation(fields: [unidadProduccionId], references: [id], onDelete: Cascade)
 
   @@map("equipo")
+}
+
+// ============================================
+// DEVICES
+// ============================================
+
+model TipoDispositivo {
+  id          String   @id @default(cuid())
+  codigo      String   @unique // "PLC", "NOD"
+  nombre      String
+  descripcion String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  dispositivos Dispositivo[]
+
+  @@map("tipo_dispositivo")
+}
+
+model Dispositivo {
+  id                String   @id @default(cuid())
+  codigo            String   @unique // auto-generated: {AREA}{TIPO}{SEQ}
+  tipoDispositivoId String
+  areaActividad     String // e.g., "AIREACION_ELECTRICA", "BOMBEO"
+  asignado          Boolean  @default(false)
+  sectorId          String?
+  localProductivoId String
+  configuracionMqtt Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tipoDispositivo    TipoDispositivo  @relation(fields: [tipoDispositivoId], references: [id])
+  sector             Sector?          @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  localProductivo    LocalProductivo  @relation(fields: [localProductivoId], references: [id], onDelete: Cascade)
+  unidadesProduccion UnidadProduccion[]
+
+  @@map("dispositivo")
 }
 
 // ============================================

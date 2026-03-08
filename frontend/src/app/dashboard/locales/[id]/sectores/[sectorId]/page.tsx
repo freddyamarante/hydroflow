@@ -1,14 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import api from '@/lib/api';
+import { useAuth } from '@/contexts/auth-context';
 import { Breadcrumbs } from '@/components/navigation/breadcrumbs';
 import { StatsGrid } from '@/components/dashboard/stats-grid';
 import { StatsCard } from '@/components/dashboard/stats-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { UnidadForm, UnidadFormValues } from '@/components/forms/unidad-form';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Box, Clock } from 'lucide-react';
+import { Box, Clock, Plus } from 'lucide-react';
 import Link from 'next/link';
 
 interface UnidadItem {
@@ -39,23 +49,52 @@ export default function SectorDashboardPage() {
   const params = useParams();
   const localId = params.id as string;
   const sectorId = params.sectorId as string;
+  const { user } = useAuth();
   const [data, setData] = useState<SectorDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [userLocalRole, setUserLocalRole] = useState<string | null>(null);
+
+  const [unidadDialogOpen, setUnidadDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const [sectorRes, localRes] = await Promise.all([
+        api.get(`/api/sectores/${sectorId}/dashboard`),
+        api.get(`/api/locales/${localId}/dashboard`),
+      ]);
+      setData(sectorRes.data);
+      setUserLocalRole(localRes.data.userLocalRole ?? null);
+    } catch {
+      setError('Error al cargar los datos del sector');
+    } finally {
+      setLoading(false);
+    }
+  }, [sectorId, localId]);
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const response = await api.get(`/api/sectores/${sectorId}/dashboard`);
-        setData(response.data);
-      } catch (error) {
-        console.error('Error fetching sector dashboard:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboard();
-  }, [sectorId]);
+  }, [fetchDashboard]);
+
+  const isSupervisor = user?.rol === 'ADMIN' || userLocalRole === 'SUPERVISOR';
+
+  async function handleCreateUnidad(values: UnidadFormValues) {
+    try {
+      setSubmitting(true);
+      await api.post('/api/unidades', {
+        nombre: values.nombre,
+        sectorId,
+        topicMqtt: values.topicMqtt,
+      });
+      setUnidadDialogOpen(false);
+      fetchDashboard();
+    } catch {
+      setError('Error al crear la unidad de producción');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -99,6 +138,12 @@ export default function SectorDashboardPage() {
         </p>
       </div>
 
+      {error && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       <StatsGrid>
         <StatsCard
           icon={Box}
@@ -108,7 +153,15 @@ export default function SectorDashboardPage() {
       </StatsGrid>
 
       <div>
-        <h3 className="text-lg font-semibold mb-4">Unidades de Produccion</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Unidades de Produccion</h3>
+          {isSupervisor && (
+            <Button onClick={() => setUnidadDialogOpen(true)}>
+              <Plus className="size-4" />
+              Nueva Unidad
+            </Button>
+          )}
+        </div>
         {data.unidades.length === 0 ? (
           <div className="flex items-center justify-center h-32 border border-dashed rounded-lg">
             <p className="text-muted-foreground">No hay unidades configuradas.</p>
@@ -146,6 +199,25 @@ export default function SectorDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* New Unidad Dialog */}
+      {isSupervisor && (
+        <Dialog open={unidadDialogOpen} onOpenChange={setUnidadDialogOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Nueva Unidad de Producción</DialogTitle>
+              <DialogDescription>
+                Crea una nueva unidad de producción en {data.sector.nombre}.
+              </DialogDescription>
+            </DialogHeader>
+            <UnidadForm
+              sectorId={sectorId}
+              onSubmit={handleCreateUnidad}
+              loading={submitting}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
