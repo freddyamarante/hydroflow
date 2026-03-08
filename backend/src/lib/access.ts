@@ -95,3 +95,11 @@ export async function getLocalIdFromUnidad(unidadId: string): Promise<string | n
   });
   return unidad?.sector.area.localProductivoId ?? null;
 }
+
+export async function getLocalIdFromDispositivo(dispositivoId: string): Promise<string | null> {
+  const dispositivo = await prisma.dispositivo.findUnique({
+    where: { id: dispositivoId },
+    select: { localProductivoId: true },
+  });
+  return dispositivo?.localProductivoId ?? null;
+}
