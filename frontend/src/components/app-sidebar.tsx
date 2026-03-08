@@ -11,7 +11,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, Building2, Users, Network, MapPin } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, Network, MapPin, Map, Grid3X3, Box, Cpu } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
@@ -27,9 +27,14 @@ function getNavItems(rol?: string): NavItem[] {
   if (rol === 'ADMIN') {
     return [
       { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { title: 'Empresas', href: '/dashboard/empresas', icon: Building2 },
+      { title: 'Grupo Corporativo', href: '/dashboard/grupos-corporativos', icon: Network },
+      { title: 'Empresa', href: '/dashboard/empresas', icon: Building2 },
+      { title: 'Locales', href: '/dashboard/locales', icon: MapPin },
+      { title: 'Áreas', href: '/dashboard/areas', icon: Map },
+      { title: 'Sectores', href: '/dashboard/sectores', icon: Grid3X3 },
+      { title: 'Unidades', href: '/dashboard/unidades', icon: Box },
+      { title: 'Dispositivos', href: '/dashboard/dispositivos', icon: Cpu },
       { title: 'Usuarios', href: '/dashboard/usuarios', icon: Users },
-      { title: 'Grupos Corporativos', href: '/dashboard/grupos-corporativos', icon: Network },
     ];
   }
 

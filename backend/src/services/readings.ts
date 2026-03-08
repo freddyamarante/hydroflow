@@ -48,18 +48,8 @@ export function initReadingsHandler(): void {
         return;
       }
 
-      // Calculate flujo_instantaneo
-      const velocidad = data.velocidad ?? 0;
-      const nivel = data.nivel ?? 0;
-      const configuracion = (unidad.configuracion as Record<string, unknown>) || {};
-      const anchoCanal = (configuracion.ancho_canal as number) ?? 0;
-
-      const flujoInstantaneo = velocidad * nivel * anchoCanal;
-
-      const valores = {
-        ...data,
-        flujo_instantaneo: flujoInstantaneo,
-      };
+      // Store raw sensor values as-is
+      const valores = { ...data };
 
       // Store lectura
       const lectura = await prisma.lectura.create({

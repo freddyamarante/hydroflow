@@ -1,7 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
-import { Rol } from '@prisma/client';
 import prisma from '../lib/prisma.js';
 import { canAccessLocal } from '../lib/access.js';
+import '../types/index.js';
 
 const meRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -9,7 +9,7 @@ const meRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /me/locales - Locales the current user has access to
   fastify.get('/me/locales', async (request, reply) => {
     try {
-      const user = request.user as { id: string; rol: Rol };
+      const user = request.user;
 
       let locales;
 
@@ -81,7 +81,7 @@ const meRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/me/locales/:id/stats', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      const user = request.user as { id: string; rol: Rol };
+      const user = request.user;
 
       const hasAccess = await canAccessLocal(user.id, id, user.rol);
       if (!hasAccess) {

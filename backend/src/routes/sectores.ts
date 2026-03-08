@@ -44,6 +44,16 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: {
+            area: {
+              select: {
+                id: true,
+                nombre: true,
+                localProductivo: { select: { id: true, nombre: true } },
+              },
+            },
+            _count: { select: { unidadesProduccion: true } },
+          },
         }),
         prisma.sector.count({ where }),
       ]);
