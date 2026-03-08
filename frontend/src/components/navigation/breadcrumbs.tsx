@@ -11,7 +11,7 @@ import {
 
 export interface BreadcrumbEntry {
   label: string;
-  href: string;
+  href?: string;
 }
 
 interface BreadcrumbsProps {
@@ -28,9 +28,9 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
           const isLast = index === items.length - 1;
 
           return (
-            <Fragment key={item.href}>
+            <Fragment key={item.href ?? index}>
               <BreadcrumbItemPrimitive>
-                {isLast ? (
+                {isLast || !item.href ? (
                   <BreadcrumbPage>{item.label}</BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink asChild>

@@ -11,7 +11,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
 } from '@/components/ui/sidebar';
-import { LayoutDashboard, Building2, Users, Network, MapPin, Map, Grid3X3, Box, Cpu } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, Network, MapPin, Map, Grid3X3, Box, Cpu, Wrench, ShieldAlert, Bell } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
@@ -34,6 +34,9 @@ function getNavItems(rol?: string): NavItem[] {
       { title: 'Sectores', href: '/dashboard/sectores', icon: Grid3X3 },
       { title: 'Unidades', href: '/dashboard/unidades', icon: Box },
       { title: 'Dispositivos', href: '/dashboard/dispositivos', icon: Cpu },
+      { title: 'Equipos', href: '/dashboard/equipos', icon: Wrench },
+      { title: 'Reglas', href: '/dashboard/reglas', icon: ShieldAlert },
+      { title: 'Alertas', href: '/dashboard/alertas', icon: Bell },
       { title: 'Usuarios', href: '/dashboard/usuarios', icon: Users },
     ];
   }
