@@ -17,6 +17,8 @@ async function main() {
   await prisma.regla.deleteMany()
   await prisma.equipo.deleteMany()
   await prisma.unidadProduccion.deleteMany()
+  await prisma.dispositivo.deleteMany()
+  await prisma.tipoDispositivo.deleteMany()
   await prisma.sector.deleteMany()
   await prisma.area.deleteMany()
   await prisma.usuarioLocalProductivo.deleteMany()
@@ -187,6 +189,15 @@ async function main() {
 
   await prisma.equipo.createMany({ data: equipoRecords })
   console.log(`Created ${equipoRecords.length} equipos`)
+
+  // Seed device types
+  await prisma.tipoDispositivo.createMany({
+    data: [
+      { codigo: 'PLC', nombre: 'Controlador Lógico Programable' },
+      { codigo: 'NOD', nombre: 'Nodo IOT' },
+    ],
+  })
+  console.log('Created 2 tipos de dispositivo')
 
   // ------------------------------------------------------------------
   // Users
