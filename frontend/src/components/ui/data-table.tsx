@@ -44,6 +44,7 @@ export interface ColumnDef<T> {
   header: string;
   accessorKey?: keyof T;
   accessorFn?: (row: T) => React.ReactNode;
+  cell?: (row: T) => React.ReactNode;
   sortable?: boolean;
   className?: string;
 }
@@ -53,6 +54,7 @@ export interface RowAction<T> {
   icon?: React.ReactNode;
   onClick: (row: T) => void;
   variant?: 'default' | 'destructive';
+  hidden?: (row: T) => boolean;
 }
 
 export interface DataTableProps<T> {
@@ -142,6 +144,7 @@ export function DataTable<T extends { id?: string }>({
   }
 
   function getCellValue(row: T, col: ColumnDef<T>): React.ReactNode {
+    if (col.cell) return col.cell(row);
     if (col.accessorFn) return col.accessorFn(row);
     if (col.accessorKey) {
       const val = row[col.accessorKey];
@@ -271,7 +274,9 @@ export function DataTable<T extends { id?: string }>({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {rowActions.map((action) => (
+                          {rowActions
+                            .filter((action) => !action.hidden?.(row))
+                            .map((action) => (
                             <DropdownMenuItem
                               key={action.label}
                               onClick={(e) => {
