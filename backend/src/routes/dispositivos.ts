@@ -94,7 +94,10 @@ const dispositivosRoutes: FastifyPluginAsync = async (fastify) => {
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
-          include: { tipoDispositivo: true },
+          include: {
+            tipoDispositivo: true,
+            localProductivo: { select: { id: true, nombre: true } },
+          },
         }),
         prisma.dispositivo.count({ where }),
       ]);
@@ -299,6 +302,140 @@ const dispositivosRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'An error occurred while deleting dispositivo',
+      });
+    }
+  });
+
+  // POST /dispositivos/:id/asignar - Assign device to a sector
+  fastify.post('/dispositivos/:id/asignar', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const { sectorId } = z.object({ sectorId: z.string().min(1) }).parse(request.body);
+      const user = request.user;
+
+      const dispositivo = await prisma.dispositivo.findUnique({
+        where: { id },
+        include: { tipoDispositivo: true },
+      });
+
+      if (!dispositivo) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Dispositivo not found' });
+      }
+
+      if (dispositivo.asignado) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Dispositivo is already assigned. Unassign it first.',
+        });
+      }
+
+      if (user.rol !== 'ADMIN') {
+        const localRole = await getLocalRole(user.id, dispositivo.localProductivoId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to assign this dispositivo',
+          });
+        }
+      }
+
+      // Check PLC-per-sector cardinality for BOMBEO areas
+      const sector = await prisma.sector.findUnique({
+        where: { id: sectorId },
+        include: { area: { select: { actividadProductiva: true } } },
+      });
+
+      if (!sector) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Sector not found' });
+      }
+
+      const actividadUpper = sector.area.actividadProductiva?.toUpperCase().replace(/ /g, '_') ?? '';
+      if (actividadUpper.includes('BOMBEO') && dispositivo.tipoDispositivo.codigo === 'PLC') {
+        const existingPLC = await prisma.dispositivo.count({
+          where: {
+            sectorId,
+            asignado: true,
+            tipoDispositivo: { codigo: 'PLC' },
+          },
+        });
+        if (existingPLC > 0) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'Sectors in areas de bombeo only allow one PLC.',
+          });
+        }
+      }
+
+      const updated = await prisma.dispositivo.update({
+        where: { id },
+        data: { sectorId, asignado: true },
+        include: { tipoDispositivo: true, sector: true },
+      });
+
+      return updated;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.code(400).send({
+          error: 'Validation Error',
+          message: error.errors[0]?.message || 'Invalid input',
+        });
+      }
+
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while assigning dispositivo',
+      });
+    }
+  });
+
+  // POST /dispositivos/:id/desasignar - Unassign device from sector
+  fastify.post('/dispositivos/:id/desasignar', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const user = request.user;
+
+      const dispositivo = await prisma.dispositivo.findUnique({ where: { id } });
+
+      if (!dispositivo) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Dispositivo not found' });
+      }
+
+      if (!dispositivo.asignado) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Dispositivo is not assigned.',
+        });
+      }
+
+      if (user.rol !== 'ADMIN') {
+        const localRole = await getLocalRole(user.id, dispositivo.localProductivoId);
+        if (localRole !== 'SUPERVISOR') {
+          return reply.code(403).send({
+            error: 'Forbidden',
+            message: 'You do not have permission to unassign this dispositivo',
+          });
+        }
+      }
+
+      // Clear dispositivoId on linked unidades
+      await prisma.unidadProduccion.updateMany({
+        where: { dispositivoId: id },
+        data: { dispositivoId: null },
+      });
+
+      const updated = await prisma.dispositivo.update({
+        where: { id },
+        data: { sectorId: null, asignado: false },
+        include: { tipoDispositivo: true },
+      });
+
+      return updated;
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'An error occurred while unassigning dispositivo',
       });
     }
   });

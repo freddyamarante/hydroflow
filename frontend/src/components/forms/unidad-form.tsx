@@ -26,7 +26,8 @@ import { Loader2 } from 'lucide-react';
 const unidadSchema = z.object({
   nombre: z.string().min(1, 'El nombre es requerido'),
   sectorId: z.string().min(1, 'El sector es requerido'),
-  topicMqtt: z.string().min(1, 'El topic MQTT es requerido'),
+  topicMqtt: z.string().optional(),
+  dispositivoId: z.string().optional(),
 });
 
 export type UnidadFormValues = z.infer<typeof unidadSchema>;
@@ -36,12 +37,19 @@ interface SectorOption {
   nombre: string;
 }
 
+interface DispositivoOption {
+  id: string;
+  codigo: string;
+  tipoDispositivo: { codigo: string; nombre: string };
+}
+
 interface UnidadFormProps {
   defaultValues?: Partial<UnidadFormValues>;
   onSubmit: (values: UnidadFormValues) => void | Promise<void>;
   loading?: boolean;
   sectores?: SectorOption[];
   sectorId?: string;
+  dispositivos?: DispositivoOption[];
 }
 
 export function UnidadForm({
@@ -50,6 +58,7 @@ export function UnidadForm({
   loading = false,
   sectores = [],
   sectorId,
+  dispositivos = [],
 }: UnidadFormProps) {
   const form = useForm<UnidadFormValues>({
     resolver: zodResolver(unidadSchema),
@@ -57,11 +66,14 @@ export function UnidadForm({
       nombre: '',
       sectorId: sectorId ?? '',
       topicMqtt: '',
+      dispositivoId: '',
       ...defaultValues,
     },
   });
 
   const isEdit = !!defaultValues;
+  const selectedDispositivoId = form.watch('dispositivoId');
+  const hasDispositivo = !!selectedDispositivoId;
 
   return (
     <Form {...form}>
@@ -110,25 +122,62 @@ export function UnidadForm({
           />
         )}
 
-        <FormField
-          control={form.control}
-          name="topicMqtt"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Topic MQTT *</FormLabel>
-              <FormControl>
-                <Input
-                  placeholder="hydroflow/local/area/sector/unidad_id"
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>
-                Formato: hydroflow/local/area/sector/unidad_id
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {dispositivos.length > 0 && (
+          <FormField
+            control={form.control}
+            name="dispositivoId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Dispositivo</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar dispositivo (opcional)" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {dispositivos.map((disp) => (
+                      <SelectItem key={disp.id} value={disp.id}>
+                        {disp.codigo} ({disp.tipoDispositivo.codigo})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {hasDispositivo && (
+                  <FormDescription>
+                    El topic MQTT sera generado automaticamente
+                  </FormDescription>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+
+        {!hasDispositivo && (
+          <FormField
+            control={form.control}
+            name="topicMqtt"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Topic MQTT</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="hydroflow/local/area/sector/unidad_id"
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  Formato: hydroflow/local/area/sector/unidad_id. Dejar vacio si se selecciona un dispositivo.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <Button type="submit" disabled={loading} className="w-full">
           {loading && <Loader2 className="animate-spin" />}

@@ -4,17 +4,50 @@ import prisma from '../lib/prisma.js';
 import { getUserLocalIds, getLocalRole, getLocalIdFromSector, getLocalIdFromUnidad } from '../lib/access.js';
 import type { PaginationQuery } from '../types/index.js';
 
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+}
+
+async function deriveTopicMqtt(dispositivoId: string, sectorId: string, unidadNombre: string): Promise<string> {
+  const [dispositivo, sector] = await Promise.all([
+    prisma.dispositivo.findUnique({ where: { id: dispositivoId }, select: { codigo: true } }),
+    prisma.sector.findUnique({
+      where: { id: sectorId },
+      select: {
+        nombre: true,
+        area: {
+          select: {
+            nombre: true,
+            localProductivo: { select: { nombre: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  if (!dispositivo || !sector) throw new Error('Could not derive topic: missing data');
+
+  const localSlug = slugify(sector.area.localProductivo.nombre);
+  const areaSlug = slugify(sector.area.nombre);
+  const sectorSlug = slugify(sector.nombre);
+  const unidadSlug = slugify(unidadNombre);
+
+  return `hydroflow/${localSlug}/${areaSlug}/${sectorSlug}/${dispositivo.codigo.toLowerCase()}/${unidadSlug}`;
+}
+
 const createUnidadSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   sectorId: z.string().min(1, 'Sector ID is required'),
   posicion: z.any().optional(),
   detalles: z.any().optional(),
   tipoModuloId: z.string().optional(),
-  topicMqtt: z.string().min(1, 'MQTT topic is required'),
+  topicMqtt: z.string().optional(),
+  dispositivoId: z.string().optional(),
   configuracion: z.any().optional(),
 });
 
 const updateUnidadSchema = createUnidadSchema.partial();
+
 
 const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -42,6 +75,10 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: {
+            sector: { select: { id: true, nombre: true } },
+            dispositivo: { select: { id: true, codigo: true, tipoDispositivo: true } },
+          },
         }),
         prisma.unidadProduccion.count({ where }),
       ]);
@@ -68,6 +105,9 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const unidad = await prisma.unidadProduccion.findUnique({
         where: { id },
+        include: {
+          dispositivo: { select: { id: true, codigo: true, tipoDispositivo: true } },
+        },
       });
 
       if (!unidad) {
@@ -110,7 +150,17 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      const unidad = await prisma.unidadProduccion.create({ data });
+      // Auto-derive topicMqtt if dispositivoId is provided and topicMqtt is not
+      if (data.dispositivoId && !data.topicMqtt) {
+        data.topicMqtt = await deriveTopicMqtt(data.dispositivoId, data.sectorId, data.nombre);
+      }
+
+      const unidad = await prisma.unidadProduccion.create({
+        data,
+        include: {
+          dispositivo: { select: { id: true, codigo: true, tipoDispositivo: true } },
+        },
+      });
 
       return reply.code(201).send(unidad);
     } catch (error) {

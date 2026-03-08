@@ -39,6 +39,10 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: {
+            localProductivo: { select: { id: true, nombre: true } },
+            _count: { select: { sectores: true } },
+          },
         }),
         prisma.area.count({ where }),
       ]);
