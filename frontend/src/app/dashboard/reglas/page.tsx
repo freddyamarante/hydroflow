@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, ToggleLeft } from 'lucide-react';
 
 interface Regla {
   id: string;

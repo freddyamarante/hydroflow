@@ -52,11 +52,6 @@ jobs:
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
 
-            # Migrate existing enum values before schema push (one-time: SUPERVISOR/VISOR → ADMIN)
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T postgres psql -U hydroflow -d hydroflow_staging -c "
-              UPDATE usuario SET rol = 'ADMIN' WHERE rol IN ('SUPERVISOR', 'VISOR');
-            " || true
-
             # Push schema to DB and re-seed
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bunx prisma db push --accept-data-loss
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bun run prisma/seed.ts
