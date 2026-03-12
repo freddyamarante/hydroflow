@@ -47,8 +47,10 @@ interface SectorDashboard {
     nombre: string;
     topicMqtt: string;
     posicion: unknown;
+    dispositivoCodigo: string | null;
     ultimaLectura: string | null;
   }[];
+  siblingSectores: { id: string; nombre: string; bounds: unknown }[];
 }
 
 export default function SectorDetailPage() {
@@ -189,7 +191,7 @@ export default function SectorDetailPage() {
 
   if (!data) return null;
 
-  const { sector, stats, unidades, currentUserLocalRole } = data;
+  const { sector, stats, unidades, siblingSectores, currentUserLocalRole } = data;
   const canWrite = currentUserLocalRole === 'ADMIN' || currentUserLocalRole === 'SUPERVISOR';
 
   const basePath = `/dashboard/empresas/${empresaId}/locales/${localId}`;
@@ -198,7 +200,11 @@ export default function SectorDetailPage() {
 
   const unidadColumns: ColumnDef<(typeof unidades)[0]>[] = [
     { id: 'nombre', header: 'Nombre', accessorKey: 'nombre', sortable: true },
-    { id: 'topicMqtt', header: 'Topic MQTT', accessorKey: 'topicMqtt' },
+    {
+      id: 'dispositivoCodigo',
+      header: 'Dispositivo',
+      accessorFn: (row) => row.dispositivoCodigo ?? '-',
+    },
     {
       id: 'ultimaLectura',
       header: 'Ultima Lectura',
@@ -348,6 +354,7 @@ export default function SectorDetailPage() {
               bounds: sector.bounds as GeoJSON.Polygon | undefined,
             }}
             parentBounds={sector.area.bounds as GeoJSON.Polygon | null}
+            siblingSectors={siblingSectores.filter(s => s.bounds).map(s => ({ id: s.id, nombre: s.nombre, bounds: s.bounds as GeoJSON.Polygon }))}
             onSubmit={handleEditSubmit}
             loading={submitting}
           />
@@ -389,6 +396,7 @@ export default function SectorDetailPage() {
             onSubmit={handleCreateUnidad}
             loading={submitting}
             parentBounds={sectorBounds}
+            siblingUnidades={unidades.filter(u => u.posicion).map(u => ({ id: u.id, nombre: u.nombre, posicion: u.posicion as { lat: number; lng: number } }))}
           />
         </DialogContent>
       </Dialog>
@@ -415,6 +423,7 @@ export default function SectorDetailPage() {
               onSubmit={handleEditUnidad}
               loading={submitting}
               parentBounds={sectorBounds}
+              siblingUnidades={unidades.filter(u => u.posicion && u.id !== selectedUnidad.id).map(u => ({ id: u.id, nombre: u.nombre, posicion: u.posicion as { lat: number; lng: number } }))}
             />
           )}
         </DialogContent>

@@ -1,120 +1,469 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Map, MapControls, useMap } from '@/components/ui/map';
 import { Button } from '@/components/ui/button';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Satellite, MapIcon, LocateFixed } from 'lucide-react';
+import { pointInPolygon, polygonInsidePolygon, getPolygonBBox, findOverlappingSibling } from '@/lib/geo';
 import type MapLibreGL from 'maplibre-gl';
 
 interface BoundsEditorProps {
   value?: GeoJSON.Polygon | null;
   onChange: (bounds: GeoJSON.Polygon | null) => void;
   parentBounds?: GeoJSON.Polygon | null;
+  siblingPolygons?: { id: string; nombre: string; bounds: GeoJSON.Polygon }[];
   className?: string;
 }
 
 const DEFAULT_CENTER: [number, number] = [-79.9, -2.2];
 const DEFAULT_ZOOM = 10;
 
-function PolygonLayers() {
-  const { map, isLoaded } = useMap();
+const SATELLITE_STYLE: MapLibreGL.StyleSpecification = {
+  version: 8,
+  sources: {
+    satellite: {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      maxzoom: 19,
+    },
+  },
+  layers: [
+    {
+      id: 'satellite-layer',
+      type: 'raster',
+      source: 'satellite',
+      minzoom: 0,
+      maxzoom: 22,
+    },
+  ],
+};
 
+const SIBLING_COLORS = ['#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
+interface BoundsInteractionProps {
+  vertices: [number, number][];
+  closed: boolean;
+  parentBounds?: GeoJSON.Polygon | null;
+  siblingPolygons?: { id: string; nombre: string; bounds: GeoJSON.Polygon }[];
+  value?: GeoJSON.Polygon | null;
+  onClickMap: (lngLat: [number, number]) => void;
+  onInitialValue: (verts: [number, number][]) => void;
+  onError: (message: string) => void;
+  isSatellite: boolean;
+  recenterTrigger: number;
+}
+
+function BoundsInteraction({
+  vertices,
+  closed,
+  parentBounds,
+  siblingPolygons,
+  value,
+  onClickMap,
+  onInitialValue,
+  onError,
+  isSatellite,
+  recenterTrigger,
+}: BoundsInteractionProps) {
+  const { map, isLoaded } = useMap();
+  const layersAddedRef = useRef(false);
+  const initialValueAppliedRef = useRef(false);
+
+  // Add all sources and layers
+  const addLayers = useCallback(
+    (m: MapLibreGL.Map) => {
+      // Parent bounds layer (dashed outline)
+      if (!m.getSource('parent-bounds-source')) {
+        m.addSource('parent-bounds-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+      if (!m.getLayer('parent-bounds-line')) {
+        m.addLayer({
+          id: 'parent-bounds-line',
+          type: 'line',
+          source: 'parent-bounds-source',
+          paint: {
+            'line-color': '#94a3b8',
+            'line-width': 2,
+            'line-dasharray': [4, 3],
+          },
+        });
+      }
+
+      // Sibling polygon layers (read-only overlays)
+      if (siblingPolygons) {
+        for (let i = 0; i < siblingPolygons.length; i++) {
+          const s = siblingPolygons[i];
+          const color = SIBLING_COLORS[i % SIBLING_COLORS.length];
+          const sourceId = `sibling-${s.id}-source`;
+          const fillId = `sibling-${s.id}-fill`;
+          const lineId = `sibling-${s.id}-line`;
+          const labelId = `sibling-${s.id}-label`;
+
+          if (!m.getSource(sourceId)) {
+            m.addSource(sourceId, {
+              type: 'geojson',
+              data: {
+                type: 'Feature',
+                properties: {},
+                geometry: s.bounds,
+              },
+            });
+          }
+          if (!m.getLayer(fillId)) {
+            m.addLayer({
+              id: fillId,
+              type: 'fill',
+              source: sourceId,
+              paint: {
+                'fill-color': color,
+                'fill-opacity': isSatellite ? 0.3 : 0.12,
+              },
+            });
+          }
+          if (!m.getLayer(lineId)) {
+            m.addLayer({
+              id: lineId,
+              type: 'line',
+              source: sourceId,
+              paint: {
+                'line-color': color,
+                'line-width': isSatellite ? 3 : 2,
+              },
+            });
+          }
+          if (!m.getLayer(labelId)) {
+            m.addLayer({
+              id: labelId,
+              type: 'symbol',
+              source: sourceId,
+              layout: {
+                'text-field': s.nombre,
+                'text-size': 12,
+                'text-anchor': 'center',
+              },
+              paint: {
+                'text-color': color,
+                'text-halo-color': '#ffffff',
+                'text-halo-width': 1.5,
+              },
+            });
+          }
+        }
+      }
+
+      // Drawing polygon layer
+      if (!m.getSource('polygon-source')) {
+        m.addSource('polygon-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+      if (!m.getLayer('polygon-fill')) {
+        m.addLayer({
+          id: 'polygon-fill',
+          type: 'fill',
+          source: 'polygon-source',
+          paint: {
+            'fill-color': '#3b82f6',
+            'fill-opacity': 0.15,
+          },
+        });
+      }
+      if (!m.getLayer('polygon-line')) {
+        m.addLayer({
+          id: 'polygon-line',
+          type: 'line',
+          source: 'polygon-source',
+          paint: {
+            'line-color': '#3b82f6',
+            'line-width': 2,
+          },
+        });
+      }
+
+      // Points layer for vertices
+      if (!m.getSource('vertices-source')) {
+        m.addSource('vertices-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+      if (!m.getLayer('vertices-layer')) {
+        m.addLayer({
+          id: 'vertices-layer',
+          type: 'circle',
+          source: 'vertices-source',
+          paint: {
+            'circle-radius': 5,
+            'circle-color': '#3b82f6',
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+          },
+        });
+      }
+
+      layersAddedRef.current = true;
+    },
+    [siblingPolygons, isSatellite]
+  );
+
+  const removeLayers = useCallback((m: MapLibreGL.Map) => {
+    try {
+      if (m.getLayer('vertices-layer')) m.removeLayer('vertices-layer');
+      if (m.getSource('vertices-source')) m.removeSource('vertices-source');
+      if (m.getLayer('polygon-line')) m.removeLayer('polygon-line');
+      if (m.getLayer('polygon-fill')) m.removeLayer('polygon-fill');
+      if (m.getSource('polygon-source')) m.removeSource('polygon-source');
+      // Remove sibling layers
+      if (siblingPolygons) {
+        for (const s of siblingPolygons) {
+          if (m.getLayer(`sibling-${s.id}-label`)) m.removeLayer(`sibling-${s.id}-label`);
+          if (m.getLayer(`sibling-${s.id}-line`)) m.removeLayer(`sibling-${s.id}-line`);
+          if (m.getLayer(`sibling-${s.id}-fill`)) m.removeLayer(`sibling-${s.id}-fill`);
+          if (m.getSource(`sibling-${s.id}-source`)) m.removeSource(`sibling-${s.id}-source`);
+        }
+      }
+      if (m.getLayer('parent-bounds-line')) m.removeLayer('parent-bounds-line');
+      if (m.getSource('parent-bounds-source')) m.removeSource('parent-bounds-source');
+    } catch {
+      // ignore
+    }
+    layersAddedRef.current = false;
+  }, [siblingPolygons]);
+
+  // Set up layers and re-add on style changes
   useEffect(() => {
     if (!isLoaded || !map) return;
 
-    // Parent bounds layer (dashed outline)
-    if (!map.getSource('parent-bounds-source')) {
-      map.addSource('parent-bounds-source', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-    }
-    if (!map.getLayer('parent-bounds-line')) {
-      map.addLayer({
-        id: 'parent-bounds-line',
-        type: 'line',
-        source: 'parent-bounds-source',
-        paint: {
-          'line-color': '#94a3b8',
-          'line-width': 2,
-          'line-dasharray': [4, 3],
-        },
-      });
-    }
+    addLayers(map);
 
-    // Drawing polygon layer
-    if (!map.getSource('polygon-source')) {
-      map.addSource('polygon-source', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-    }
-    if (!map.getLayer('polygon-fill')) {
-      map.addLayer({
-        id: 'polygon-fill',
-        type: 'fill',
-        source: 'polygon-source',
-        paint: {
-          'fill-color': '#3b82f6',
-          'fill-opacity': 0.15,
-        },
-      });
-    }
-    if (!map.getLayer('polygon-line')) {
-      map.addLayer({
-        id: 'polygon-line',
-        type: 'line',
-        source: 'polygon-source',
-        paint: {
-          'line-color': '#3b82f6',
-          'line-width': 2,
-        },
-      });
-    }
+    const handleStyleLoad = () => {
+      // Re-add layers after style change (satellite toggle, theme change)
+      layersAddedRef.current = false;
+      addLayers(map);
+      // Re-apply current data after re-adding layers
+      updatePolygonData(map, vertices, closed);
+      updateParentData(map, parentBounds ?? null);
+      updateSiblingData(map, siblingPolygons);
+    };
 
-    // Points layer for vertices
-    if (!map.getSource('vertices-source')) {
-      map.addSource('vertices-source', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-    }
-    if (!map.getLayer('vertices-layer')) {
-      map.addLayer({
-        id: 'vertices-layer',
-        type: 'circle',
-        source: 'vertices-source',
-        paint: {
-          'circle-radius': 5,
-          'circle-color': '#3b82f6',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-        },
-      });
-    }
+    map.on('style.load', handleStyleLoad);
 
     return () => {
-      try {
-        if (map.getLayer('vertices-layer')) map.removeLayer('vertices-layer');
-        if (map.getSource('vertices-source')) map.removeSource('vertices-source');
-        if (map.getLayer('polygon-line')) map.removeLayer('polygon-line');
-        if (map.getLayer('polygon-fill')) map.removeLayer('polygon-fill');
-        if (map.getSource('polygon-source')) map.removeSource('polygon-source');
-        if (map.getLayer('parent-bounds-line')) map.removeLayer('parent-bounds-line');
-        if (map.getSource('parent-bounds-source')) map.removeSource('parent-bounds-source');
-      } catch {
-        // ignore
-      }
+      map.off('style.load', handleStyleLoad);
+      removeLayers(map);
     };
-  }, [isLoaded, map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, map, addLayers, removeLayers]);
+
+  // Click handler
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+
+    const handler = (e: MapLibreGL.MapMouseEvent) => {
+      if (closed) return;
+      const point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      if (parentBounds) {
+        const parentRing = parentBounds.coordinates[0] as [number, number][];
+        if (!pointInPolygon(point, parentRing)) {
+          onError('El punto debe estar dentro de los limites del local/area');
+          return;
+        }
+      }
+      onClickMap(point);
+    };
+
+    map.on('click', handler);
+    return () => {
+      map.off('click', handler);
+    };
+  }, [isLoaded, map, closed, onClickMap, parentBounds, onError]);
+
+  // Update polygon and vertex sources when vertices/closed change
+  useEffect(() => {
+    if (!isLoaded || !map || !layersAddedRef.current) return;
+    updatePolygonData(map, vertices, closed);
+  }, [isLoaded, map, vertices, closed]);
+
+  // Update parent bounds source
+  useEffect(() => {
+    if (!isLoaded || !map || !layersAddedRef.current) return;
+    updateParentData(map, parentBounds ?? null);
+  }, [isLoaded, map, parentBounds]);
+
+  // Update sibling polygon sources
+  useEffect(() => {
+    if (!isLoaded || !map || !layersAddedRef.current) return;
+    updateSiblingData(map, siblingPolygons);
+  }, [isLoaded, map, siblingPolygons]);
+
+  // Show existing value on mount
+  useEffect(() => {
+    if (!isLoaded || !map || !value || initialValueAppliedRef.current) return;
+    initialValueAppliedRef.current = true;
+    const ring = value.coordinates[0] as [number, number][];
+    const verts = ring.slice(0, -1);
+    onInitialValue(verts);
+  }, [isLoaded, map, value, onInitialValue]);
+
+  // Fit to parent bounds when map is ready
+  useEffect(() => {
+    if (!isLoaded || !map || !parentBounds) return;
+
+    const coords = parentBounds.coordinates[0] as [number, number][];
+    const lngs = coords.map((c) => c[0]);
+    const lats = coords.map((c) => c[1]);
+    map.fitBounds(
+      [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ],
+      { padding: 40, duration: 0 }
+    );
+  }, [isLoaded, map, parentBounds]);
+
+  // Adjust paint properties for satellite contrast
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+    try {
+      if (map.getLayer('parent-bounds-line')) {
+        map.setPaintProperty('parent-bounds-line', 'line-color', isSatellite ? '#ffffff' : '#94a3b8');
+        map.setPaintProperty('parent-bounds-line', 'line-width', isSatellite ? 3 : 2);
+      }
+      if (map.getLayer('polygon-fill')) {
+        map.setPaintProperty('polygon-fill', 'fill-opacity', isSatellite ? 0.35 : 0.15);
+      }
+      if (map.getLayer('polygon-line')) {
+        map.setPaintProperty('polygon-line', 'line-color', isSatellite ? '#93c5fd' : '#3b82f6');
+        map.setPaintProperty('polygon-line', 'line-width', isSatellite ? 3 : 2);
+      }
+      if (map.getLayer('vertices-layer')) {
+        map.setPaintProperty('vertices-layer', 'circle-radius', isSatellite ? 7 : 5);
+        map.setPaintProperty('vertices-layer', 'circle-color', isSatellite ? '#93c5fd' : '#3b82f6');
+        map.setPaintProperty('vertices-layer', 'circle-stroke-width', isSatellite ? 3 : 2);
+      }
+      // Adjust sibling layer opacities for satellite contrast
+      if (siblingPolygons) {
+        for (const s of siblingPolygons) {
+          if (map.getLayer(`sibling-${s.id}-fill`)) {
+            map.setPaintProperty(`sibling-${s.id}-fill`, 'fill-opacity', isSatellite ? 0.3 : 0.12);
+          }
+          if (map.getLayer(`sibling-${s.id}-line`)) {
+            map.setPaintProperty(`sibling-${s.id}-line`, 'line-width', isSatellite ? 3 : 2);
+          }
+        }
+      }
+    } catch {
+      // layers may not exist yet
+    }
+  }, [isLoaded, map, isSatellite, siblingPolygons]);
+
+  // Restrict zoom-out to parent bounds area
+  useEffect(() => {
+    if (!isLoaded || !map || !parentBounds) return;
+    const bbox = getPolygonBBox(parentBounds, 0.5);
+    map.setMaxBounds(bbox);
+    return () => {
+      try { map.setMaxBounds(null); } catch { /* ignore */ }
+    };
+  }, [isLoaded, map, parentBounds]);
+
+  // Recenter to parent bounds on trigger
+  useEffect(() => {
+    if (!isLoaded || !map || !parentBounds || recenterTrigger === 0) return;
+    const bbox = getPolygonBBox(parentBounds, 0);
+    map.fitBounds(bbox, { padding: 40, duration: 300 });
+  }, [isLoaded, map, parentBounds, recenterTrigger]);
 
   return null;
 }
 
-export function BoundsEditor({ value, onChange, parentBounds, className }: BoundsEditorProps) {
-  const mapRef = useRef<MapLibreGL.Map | null>(null);
+function updatePolygonData(
+  map: MapLibreGL.Map,
+  coords: [number, number][],
+  isClosed: boolean
+) {
+  const polySource = map.getSource('polygon-source') as MapLibreGL.GeoJSONSource | undefined;
+  const vertSource = map.getSource('vertices-source') as MapLibreGL.GeoJSONSource | undefined;
+
+  if (polySource) {
+    if (coords.length >= 3 && isClosed) {
+      polySource.setData({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [[...coords, coords[0]]] },
+      });
+    } else if (coords.length >= 2) {
+      polySource.setData({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: coords },
+      });
+    } else {
+      polySource.setData({ type: 'FeatureCollection', features: [] });
+    }
+  }
+
+  if (vertSource) {
+    vertSource.setData({
+      type: 'FeatureCollection',
+      features: coords.map((c) => ({
+        type: 'Feature' as const,
+        properties: {},
+        geometry: { type: 'Point' as const, coordinates: c },
+      })),
+    });
+  }
+}
+
+function updateParentData(
+  map: MapLibreGL.Map,
+  bounds: GeoJSON.Polygon | null
+) {
+  const source = map.getSource('parent-bounds-source') as MapLibreGL.GeoJSONSource | undefined;
+  if (!source) return;
+
+  if (bounds) {
+    source.setData({
+      type: 'Feature',
+      properties: {},
+      geometry: bounds,
+    });
+  } else {
+    source.setData({ type: 'FeatureCollection', features: [] });
+  }
+}
+
+function updateSiblingData(
+  map: MapLibreGL.Map,
+  siblingPolygons?: { id: string; nombre: string; bounds: GeoJSON.Polygon }[]
+) {
+  if (!siblingPolygons) return;
+  for (const s of siblingPolygons) {
+    const source = map.getSource(`sibling-${s.id}-source`) as MapLibreGL.GeoJSONSource | undefined;
+    if (source) {
+      source.setData({
+        type: 'Feature',
+        properties: {},
+        geometry: s.bounds,
+      });
+    }
+  }
+}
+
+export function BoundsEditor({ value, onChange, parentBounds, siblingPolygons, className }: BoundsEditorProps) {
   const [vertices, setVertices] = useState<[number, number][]>([]);
   const [closed, setClosed] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [recenterTrigger, setRecenterTrigger] = useState(0);
 
   const initialCenter = parentBounds
     ? getCenterOfPolygon(parentBounds.coordinates[0] as [number, number][])
@@ -124,155 +473,91 @@ export function BoundsEditor({ value, onChange, parentBounds, className }: Bound
 
   const initialZoom = parentBounds || value ? 13 : DEFAULT_ZOOM;
 
-  const updatePolygonSource = useCallback((coords: [number, number][], isClosed: boolean) => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const polySource = map.getSource('polygon-source') as MapLibreGL.GeoJSONSource | undefined;
-    const vertSource = map.getSource('vertices-source') as MapLibreGL.GeoJSONSource | undefined;
-
-    if (polySource) {
-      if (coords.length >= 3 && isClosed) {
-        polySource.setData({
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'Polygon', coordinates: [[...coords, coords[0]]] },
-        });
-      } else if (coords.length >= 2) {
-        polySource.setData({
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'LineString', coordinates: coords },
-        });
-      } else {
-        polySource.setData({ type: 'FeatureCollection', features: [] });
-      }
+  const mapStyles = useMemo(() => {
+    if (isSatellite) {
+      return { light: SATELLITE_STYLE, dark: SATELLITE_STYLE };
     }
+    return undefined; // use default Carto styles
+  }, [isSatellite]);
 
-    if (vertSource) {
-      vertSource.setData({
-        type: 'FeatureCollection',
-        features: coords.map((c) => ({
-          type: 'Feature' as const,
-          properties: {},
-          geometry: { type: 'Point' as const, coordinates: c },
-        })),
-      });
-    }
+  const handleError = useCallback((message: string) => {
+    setError(message);
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = setTimeout(() => setError(null), 3000);
   }, []);
 
-  const updateParentSource = useCallback((bounds: GeoJSON.Polygon | null) => {
-    const map = mapRef.current;
-    if (!map) return;
-    const source = map.getSource('parent-bounds-source') as MapLibreGL.GeoJSONSource | undefined;
-    if (!source) return;
-
-    if (bounds) {
-      source.setData({
-        type: 'Feature',
-        properties: {},
-        geometry: bounds,
-      });
-    } else {
-      source.setData({ type: 'FeatureCollection', features: [] });
-    }
+  const handleClickMap = useCallback((lngLat: [number, number]) => {
+    setVertices((prev) => [...prev, lngLat]);
   }, []);
 
-  const handleMapClick = useCallback(
-    (e: MapLibreGL.MapMouseEvent) => {
-      if (closed) return;
-      const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
-      setVertices((prev) => {
-        const next = [...prev, lngLat];
-        updatePolygonSource(next, false);
-        return next;
-      });
-    },
-    [closed, updatePolygonSource]
-  );
+  const handleInitialValue = useCallback((verts: [number, number][]) => {
+    setVertices(verts);
+    setClosed(true);
+  }, []);
 
   const handleClose = useCallback(() => {
     if (vertices.length < 3) return;
+    if (parentBounds) {
+      const parentRing = parentBounds.coordinates[0] as [number, number][];
+      if (!polygonInsidePolygon(vertices, parentRing)) {
+        handleError('Todos los vertices deben estar dentro de los limites del local/area');
+        return;
+      }
+    }
+    if (siblingPolygons && siblingPolygons.length > 0) {
+      const overlapName = findOverlappingSibling(vertices, siblingPolygons);
+      if (overlapName) {
+        handleError(`El poligono se superpone con: ${overlapName}`);
+        return;
+      }
+    }
     setClosed(true);
     const ring = [...vertices, vertices[0]];
-    updatePolygonSource(vertices, true);
     onChange({ type: 'Polygon', coordinates: [ring] });
-  }, [vertices, onChange, updatePolygonSource]);
+  }, [vertices, onChange, parentBounds, siblingPolygons, handleError]);
 
   const handleClear = useCallback(() => {
     setVertices([]);
     setClosed(false);
-    updatePolygonSource([], false);
     onChange(null);
-  }, [onChange, updatePolygonSource]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.on('click', handleMapClick);
-    return () => {
-      map.off('click', handleMapClick);
-    };
-  }, [handleMapClick]);
-
-  // Show existing value
-  useEffect(() => {
-    if (value) {
-      const ring = value.coordinates[0] as [number, number][];
-      const verts = ring.slice(0, -1);
-      setVertices(verts);
-      setClosed(true);
-      updatePolygonSource(verts, true);
-    }
-  }, [value, updatePolygonSource]);
-
-  // Show parent bounds
-  useEffect(() => {
-    updateParentSource(parentBounds ?? null);
-  }, [parentBounds, updateParentSource]);
-
-  // Fit to parent bounds on mount
-  useEffect(() => {
-    if (!parentBounds) return;
-    const map = mapRef.current;
-    if (!map) return;
-
-    const handleLoad = () => {
-      const coords = parentBounds.coordinates[0] as [number, number][];
-      const lngs = coords.map((c) => c[0]);
-      const lats = coords.map((c) => c[1]);
-      map.fitBounds(
-        [
-          [Math.min(...lngs), Math.min(...lats)],
-          [Math.max(...lngs), Math.max(...lats)],
-        ],
-        { padding: 40, duration: 0 }
-      );
-    };
-
-    if (map.loaded()) {
-      handleLoad();
-    } else {
-      map.on('load', handleLoad);
-      return () => {
-        map.off('load', handleLoad);
-      };
-    }
-  }, [parentBounds]);
+  }, [onChange]);
 
   return (
     <div className={className}>
       <div className="relative h-[300px] rounded-md border overflow-hidden">
         <Map
-          ref={mapRef as React.Ref<MapLibreGL.Map>}
           center={initialCenter}
           zoom={initialZoom}
           className="h-full w-full"
+          styles={mapStyles}
         >
-          <PolygonLayers />
+          <BoundsInteraction
+            vertices={vertices}
+            closed={closed}
+            parentBounds={parentBounds}
+            siblingPolygons={siblingPolygons}
+            value={value}
+            onClickMap={handleClickMap}
+            onInitialValue={handleInitialValue}
+            onError={handleError}
+            isSatellite={isSatellite}
+            recenterTrigger={recenterTrigger}
+          />
           <MapControls position="bottom-right" showZoom />
         </Map>
         <div className="absolute top-2 left-2 z-10 flex gap-1">
+          {parentBounds && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="size-8 shadow-md"
+              onClick={() => setRecenterTrigger((n) => n + 1)}
+              title="Centrar en el area"
+            >
+              <LocateFixed className="size-4" />
+            </Button>
+          )}
           {vertices.length >= 3 && !closed && (
             <Button type="button" variant="secondary" size="sm" onClick={handleClose}>
               Cerrar poligono
@@ -285,6 +570,17 @@ export function BoundsEditor({ value, onChange, parentBounds, className }: Bound
             </Button>
           )}
         </div>
+        <div className="absolute top-2 right-2 z-10">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsSatellite((prev) => !prev)}
+            title={isSatellite ? 'Vista de mapa' : 'Vista satelital'}
+          >
+            {isSatellite ? <MapIcon className="size-4" /> : <Satellite className="size-4" />}
+          </Button>
+        </div>
         {!closed && vertices.length === 0 && (
           <div className="absolute bottom-2 left-2 z-10 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground">
             Haz clic en el mapa para agregar vertices del poligono
@@ -293,6 +589,11 @@ export function BoundsEditor({ value, onChange, parentBounds, className }: Bound
         {!closed && vertices.length > 0 && vertices.length < 3 && (
           <div className="absolute bottom-2 left-2 z-10 rounded bg-background/80 px-2 py-1 text-xs text-muted-foreground">
             Agrega al menos {3 - vertices.length} vertice(s) mas para cerrar el poligono
+          </div>
+        )}
+        {error && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 rounded bg-destructive/90 px-3 py-1.5 text-xs text-destructive-foreground shadow-md">
+            {error}
           </div>
         )}
       </div>

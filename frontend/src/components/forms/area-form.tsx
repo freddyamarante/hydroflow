@@ -45,6 +45,7 @@ interface AreaFormProps {
   locales?: LocalOption[];
   localProductivoId?: string;
   parentBounds?: GeoJSON.Polygon | null;
+  siblingAreas?: { id: string; nombre: string; bounds: GeoJSON.Polygon }[];
 }
 
 export function AreaForm({
@@ -54,6 +55,7 @@ export function AreaForm({
   locales = [],
   localProductivoId,
   parentBounds,
+  siblingAreas,
 }: AreaFormProps) {
   const [mapOpen, setMapOpen] = useState(!!defaultValues?.bounds);
 
@@ -155,6 +157,7 @@ export function AreaForm({
                         value={field.value as GeoJSON.Polygon | null | undefined}
                         onChange={field.onChange}
                         parentBounds={parentBounds}
+                        siblingPolygons={siblingAreas}
                       />
                     </FormControl>
                     <FormMessage />

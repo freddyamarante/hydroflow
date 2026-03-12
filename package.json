@@ -40,5 +40,8 @@
   },
   "devDependencies": {
     "mqtt": "^5.15.0"
+  },
+  "dependencies": {
+    "prisma": "^7.5.0"
   }
 }

@@ -16,7 +16,13 @@ const meRoutes: FastifyPluginAsync = async (fastify) => {
       if (user.rol === 'ADMIN') {
         locales = await prisma.localProductivo.findMany({
           include: {
-            empresa: { select: { id: true, razonSocial: true } },
+            empresa: {
+              select: {
+                id: true,
+                razonSocial: true,
+                grupoCorporativo: { select: { id: true, razonSocial: true } },
+              },
+            },
             _count: {
               select: {
                 areas: true,
@@ -31,7 +37,13 @@ const meRoutes: FastifyPluginAsync = async (fastify) => {
           include: {
             localProductivo: {
               include: {
-                empresa: { select: { id: true, razonSocial: true } },
+                empresa: {
+                  select: {
+                    id: true,
+                    razonSocial: true,
+                    grupoCorporativo: { select: { id: true, razonSocial: true } },
+                  },
+                },
                 _count: {
                   select: {
                     areas: true,

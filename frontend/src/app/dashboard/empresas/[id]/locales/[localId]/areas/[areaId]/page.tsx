@@ -37,9 +37,11 @@ interface AreaDashboard {
     id: string;
     nombre: string;
     tipo: string | null;
+    bounds: unknown;
     unidadesCount: number;
     usuarioResponsable: { id: string; nombre: string } | null;
   }[];
+  siblingAreas: { id: string; nombre: string; bounds: unknown }[];
   currentUserLocalRole: 'ADMIN' | 'SUPERVISOR' | 'VISOR' | null;
 }
 
@@ -143,7 +145,7 @@ export default function AreaDetailPage() {
 
   if (!data) return null;
 
-  const { area, stats, sectores, currentUserLocalRole } = data;
+  const { area, stats, sectores, siblingAreas, currentUserLocalRole } = data;
   const canWrite = currentUserLocalRole === 'ADMIN' || currentUserLocalRole === 'SUPERVISOR';
 
   const basePath = `/dashboard/empresas/${empresaId}/locales/${localId}`;
@@ -259,6 +261,7 @@ export default function AreaDetailPage() {
               bounds: areaBounds ?? undefined,
             }}
             parentBounds={localBounds}
+            siblingAreas={siblingAreas.filter(a => a.bounds).map(a => ({ id: a.id, nombre: a.nombre, bounds: a.bounds as GeoJSON.Polygon }))}
             onSubmit={handleEditSubmit}
             loading={submitting}
           />
@@ -301,6 +304,7 @@ export default function AreaDetailPage() {
             onSubmit={handleCreateSector}
             loading={submitting}
             parentBounds={areaBounds}
+            siblingSectors={sectores.filter(s => s.bounds).map(s => ({ id: s.id, nombre: s.nombre, bounds: s.bounds as GeoJSON.Polygon }))}
           />
         </DialogContent>
       </Dialog>

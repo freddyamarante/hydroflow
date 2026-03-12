@@ -6,11 +6,17 @@
 // Types
 // ---------------------------------------------------------------------------
 
-export interface UnidadMockConfig {
-  topic: string
+export interface UnidadMockEntry {
+  nombre: string
   anchoCanal: number
   baseVel: number
   baseNivel: number
+}
+
+export interface DispositivoMockConfig {
+  topic: string
+  codigo: string
+  unidades: UnidadMockEntry[]
 }
 
 export interface UnidadSeedConfig {
@@ -21,11 +27,18 @@ export interface UnidadSeedConfig {
   baseNivel: number
 }
 
+export interface DispositivoSeedConfig {
+  codigo: string
+  tipo: 'PLC' | 'NOD'
+  areaActividad: string
+}
+
 export interface SectorSeedConfig {
   nombre: string
   slug: string
   tipo: string
   unidades: UnidadSeedConfig[]
+  dispositivo: DispositivoSeedConfig
 }
 
 export interface AreaSeedConfig {
@@ -90,6 +103,28 @@ export function slugify(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Dispositivo code generation
+// ---------------------------------------------------------------------------
+
+// Area activity code mapping (matches backend AREA_CODES in dispositivos.ts)
+const AREA_ACTIVITY_CODES: Record<string, string> = {
+  AIREACION_MECANICA: 'AM',
+  AIREACION_ELECTRICA: 'AE',
+  ESTACION_DE_BOMBEO: 'EB',
+}
+
+// Global sequence counter per area+tipo prefix to ensure unique codes
+const prefixSeqCounters = new Map<string, number>()
+
+function generateDispositivoCodigo(areaActividad: string): string {
+  const areaCode = AREA_ACTIVITY_CODES[areaActividad] || 'XX'
+  const prefix = `${areaCode}PLC`
+  const seq = (prefixSeqCounters.get(prefix) || 0) + 1
+  prefixSeqCounters.set(prefix, seq)
+  return `${prefix}${String(seq).padStart(3, '0')}`
+}
+
+// ---------------------------------------------------------------------------
 // Templates
 // ---------------------------------------------------------------------------
 
@@ -132,6 +167,9 @@ function buildLocal(
         const sectorSlug = slugify(sectorNombre)
         const tipo = SECTOR_TYPES[(aIdx * SECTORES_PER_AREA + sIdx) % SECTOR_TYPES.length]
 
+        // One dispositivo (PLC) per sector — controls all unidades in the sector
+        const dispositivoCodigo = generateDispositivoCodigo('ESTACION_DE_BOMBEO')
+
         const unidades: UnidadSeedConfig[] = Array.from(
           { length: UNIDADES_PER_SECTOR },
           (_, uIdx) => {
@@ -149,7 +187,17 @@ function buildLocal(
           },
         )
 
-        return { nombre: sectorNombre, slug: sectorSlug, tipo, unidades }
+        return {
+          nombre: sectorNombre,
+          slug: sectorSlug,
+          tipo,
+          unidades,
+          dispositivo: {
+            codigo: dispositivoCodigo,
+            tipo: 'PLC' as const,
+            areaActividad: 'ESTACION_DE_BOMBEO',
+          },
+        }
       },
     )
 
@@ -247,22 +295,27 @@ export const HIERARCHY: GrupoSeedConfig[] = [
 ]
 
 // ---------------------------------------------------------------------------
-// Flat list of all unidades — used by the MQTT mock
+// Flat list of all dispositivos with their unidades — used by the MQTT mock
 // ---------------------------------------------------------------------------
 
-export const ALL_UNIDADES: UnidadMockConfig[] = HIERARCHY.flatMap((g) =>
+export const ALL_DISPOSITIVOS: DispositivoMockConfig[] = HIERARCHY.flatMap((g) =>
   g.empresas.flatMap((e) =>
     e.locales.flatMap((l) =>
       l.areas.flatMap((a) =>
-        a.sectores.flatMap((s) =>
-          s.unidades.map((u) => ({
-            topic: `hydroflow/${l.slug}/${a.slug}/${s.slug}/${u.slug}`,
+        a.sectores.map((s) => ({
+          topic: `hydroflow/${s.dispositivo.codigo}`,
+          codigo: s.dispositivo.codigo,
+          unidades: s.unidades.map((u) => ({
+            nombre: u.nombre,
             anchoCanal: u.anchoCanal,
             baseVel: u.baseVel,
             baseNivel: u.baseNivel,
           })),
-        ),
+        })),
       ),
     ),
   ),
 )
+
+// Legacy export — kept for backward compatibility
+export const ALL_UNIDADES = ALL_DISPOSITIVOS
