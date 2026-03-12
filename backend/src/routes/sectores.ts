@@ -114,6 +114,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
             select: {
               id: true,
               nombre: true,
+              bounds: true,
               localProductivo: { select: { id: true, nombre: true } },
             },
           },
@@ -126,6 +127,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
               nombre: true,
               topicMqtt: true,
               posicion: true,
+              dispositivo: { select: { id: true, codigo: true } },
               lecturas: {
                 select: { timestamp: true },
                 orderBy: { timestamp: 'desc' },
@@ -143,6 +145,11 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
+      const siblingSectores = await prisma.sector.findMany({
+        where: { areaId: sector.areaId, id: { not: id } },
+        select: { id: true, nombre: true, bounds: true },
+      });
+
       const { unidadesProduccion, ...sectorData } = sector;
 
       const user = request.user as { id: string; rol: Rol };
@@ -159,8 +166,10 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
           nombre: u.nombre,
           topicMqtt: u.topicMqtt,
           posicion: u.posicion,
+          dispositivoCodigo: u.dispositivo?.codigo ?? null,
           ultimaLectura: u.lecturas[0]?.timestamp ?? null,
         })),
+        siblingSectores,
         currentUserLocalRole,
       };
     } catch (error) {

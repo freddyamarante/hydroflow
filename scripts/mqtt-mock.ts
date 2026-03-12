@@ -1,5 +1,5 @@
 import mqtt from 'mqtt'
-import { ALL_UNIDADES } from './seed-config'
+import { ALL_DISPOSITIVOS } from './seed-config'
 
 const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883'
 const DATABASE_URL = process.env.DATABASE_URL || ''
@@ -55,8 +55,9 @@ async function cleanupOldLecturas(): Promise<void> {
 const client = mqtt.connect(BROKER_URL)
 
 client.on('connect', () => {
+  const totalUnidades = ALL_DISPOSITIVOS.reduce((sum, d) => sum + d.unidades.length, 0)
   console.log(`[Mock] Connected to ${BROKER_URL}`)
-  console.log(`[Mock] Publishing to ${ALL_UNIDADES.length} topics every ${INTERVAL_MS / 1000}s`)
+  console.log(`[Mock] Publishing ${ALL_DISPOSITIVOS.length} dispositivo messages (${totalUnidades} unidades) every ${INTERVAL_MS / 1000}s`)
   console.log(`[Mock] Data retention: ${RETENTION_HOURS}h (cleanup every 30min)`)
   console.log(`[Mock] Press Ctrl+C to stop\n`)
 
@@ -68,27 +69,34 @@ client.on('connect', () => {
     const timestamp = new Date().toISOString()
     let anomalyCount = 0
 
-    for (const u of ALL_UNIDADES) {
-      const isAnomaly = Math.random() < 0.05
+    for (const dispositivo of ALL_DISPOSITIVOS) {
+      const unidades: Record<string, unknown>[] = []
 
-      const payload: Record<string, unknown> = {
-        timestamp,
-        velocidad: fluctuate(u.baseVel),
-        nivel: fluctuate(u.baseNivel),
-        voltaje: fluctuate(440, 0.02),
-        corriente: fluctuate(28, 0.1),
+      for (const u of dispositivo.unidades) {
+        const isAnomaly = Math.random() < 0.05
+
+        const entry: Record<string, unknown> = {
+          nombre: u.nombre,
+          velocidad: fluctuate(u.baseVel),
+          nivel: fluctuate(u.baseNivel),
+          voltaje: fluctuate(440, 0.02),
+          corriente: fluctuate(28, 0.1),
+        }
+
+        if (isAnomaly) {
+          anomalyCount++
+          Object.assign(entry, generateAnomaly(u))
+        }
+
+        unidades.push(entry)
       }
 
-      if (isAnomaly) {
-        anomalyCount++
-        Object.assign(payload, generateAnomaly(u))
-      }
-
-      client.publish(u.topic, JSON.stringify(payload))
+      const payload = { timestamp, unidades }
+      client.publish(dispositivo.topic, JSON.stringify(payload))
     }
 
     console.log(
-      `[Mock] Cycle ${cycle} | ${timestamp} | ${ALL_UNIDADES.length} msgs sent` +
+      `[Mock] Cycle ${cycle} | ${timestamp} | ${ALL_DISPOSITIVOS.length} msgs sent (${totalUnidades} unidades)` +
         (anomalyCount > 0 ? ` | ${anomalyCount} anomalies` : '')
     )
   }, INTERVAL_MS)

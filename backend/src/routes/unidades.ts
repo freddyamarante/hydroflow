@@ -4,24 +4,13 @@ import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { getUserLocalIds, requireWriteAccess, getLocalIdForSector, getLocalIdForUnidad } from '../lib/access.js';
 
-function slugify(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-}
-
-async function deriveTopicMqtt(dispositivoId: string, sectorId: string, unidadNombre: string): Promise<string> {
-  const sector = await prisma.sector.findUnique({
-    where: { id: sectorId },
-    include: { area: { include: { localProductivo: true } } },
-  });
-  if (!sector) throw new Error('Sector not found');
-
+async function deriveTopicMqtt(dispositivoId: string): Promise<string> {
   const dispositivo = await prisma.dispositivo.findUnique({
     where: { id: dispositivoId },
   });
   if (!dispositivo) throw new Error('Dispositivo not found');
 
-  const local = sector.area.localProductivo;
-  return `hydroflow/${slugify(local.nombre)}/${slugify(sector.area.nombre)}/${slugify(sector.nombre)}/${dispositivo.codigo}/${slugify(unidadNombre)}`;
+  return `hydroflow/${dispositivo.codigo}`;
 }
 
 const createUnidadSchema = z.object({
@@ -128,7 +117,7 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
       const data = createUnidadSchema.parse(request.body);
 
       if (data.dispositivoId && !data.topicMqtt) {
-        data.topicMqtt = await deriveTopicMqtt(data.dispositivoId, data.sectorId, data.nombre);
+        data.topicMqtt = await deriveTopicMqtt(data.dispositivoId);
       }
 
       const unidad = await prisma.unidadProduccion.create({ data });

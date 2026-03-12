@@ -17,7 +17,6 @@ async function main() {
   await prisma.regla.deleteMany()
   await prisma.equipo.deleteMany()
   await prisma.unidadProduccion.deleteMany()
-  // dispositivo/tipoDispositivo tables may not exist yet (no migration)
   await prisma.dispositivo.deleteMany().catch(() => {})
   await prisma.tipoDispositivo.deleteMany().catch(() => {})
   await prisma.sector.deleteMany()
@@ -39,6 +38,7 @@ async function main() {
   const localRecords: Parameters<typeof prisma.localProductivo.createMany>[0]['data'] = []
   const areaRecords: Parameters<typeof prisma.area.createMany>[0]['data'] = []
   const sectorRecords: Parameters<typeof prisma.sector.createMany>[0]['data'] = []
+  const dispositivoRecords: Parameters<typeof prisma.dispositivo.createMany>[0]['data'] = []
   const unidadRecords: Parameters<typeof prisma.unidadProduccion.createMany>[0]['data'] = []
   const equipoRecords: Parameters<typeof prisma.equipo.createMany>[0]['data'] = []
 
@@ -47,6 +47,9 @@ async function main() {
   let acuacorpId = ''
   const produmarLocalIds: string[] = []
   const acuacorpLocalIds: string[] = []
+
+  // We need tipoDispositivo IDs — create them first
+  const tipoDispositivoMap = new Map<string, string>()
 
   for (const grupo of HIERARCHY) {
     const grupoSlug = slugify(grupo.razonSocial)
@@ -108,8 +111,27 @@ async function main() {
               tipo: sector.tipo,
             })
 
+            // Create dispositivo for this sector
+            const dispositivoId = makeId('disp', sector.dispositivo.codigo)
+            const tipoKey = sector.dispositivo.tipo // 'PLC' or 'NOD'
+
+            // Track unique tipo IDs
+            if (!tipoDispositivoMap.has(tipoKey)) {
+              tipoDispositivoMap.set(tipoKey, makeId('tipo-disp', tipoKey.toLowerCase()))
+            }
+
+            dispositivoRecords.push({
+              id: dispositivoId,
+              codigo: sector.dispositivo.codigo,
+              tipoDispositivoId: tipoDispositivoMap.get(tipoKey)!,
+              areaActividad: sector.dispositivo.areaActividad,
+              asignado: true,
+              sectorId,
+              localProductivoId: localId,
+            })
+
             for (const unidad of sector.unidades) {
-              const topic = `hydroflow/${local.slug}/${area.slug}/${sector.slug}/${unidad.slug}`
+              const topic = `hydroflow/${sector.dispositivo.codigo}`
               const unidadId = makeId('unidad', local.slug, area.slug, sector.slug, unidad.slug)
               const num = unidad.nombre.replace('Grupo de Bombeo ', '')
 
@@ -118,6 +140,7 @@ async function main() {
                 nombre: unidad.nombre,
                 sectorId,
                 topicMqtt: topic,
+                dispositivoId,
                 configuracion: { ancho_canal: unidad.anchoCanal },
               })
 
@@ -185,20 +208,22 @@ async function main() {
   await prisma.sector.createMany({ data: sectorRecords })
   console.log(`Created ${sectorRecords.length} sectores`)
 
+  // Create tipo dispositivo records
+  const tipoRecords = [
+    { id: tipoDispositivoMap.get('PLC') || makeId('tipo-disp', 'plc'), codigo: 'PLC', nombre: 'Controlador Lógico Programable' },
+    { id: tipoDispositivoMap.get('NOD') || makeId('tipo-disp', 'nod'), codigo: 'NOD', nombre: 'Nodo IOT' },
+  ]
+  await prisma.tipoDispositivo.createMany({ data: tipoRecords }).catch(() => console.log('Skipped tipos de dispositivo (table not yet migrated)'))
+  console.log(`Created ${tipoRecords.length} tipos de dispositivo`)
+
+  await prisma.dispositivo.createMany({ data: dispositivoRecords }).catch(() => console.log('Skipped dispositivos (table not yet migrated)'))
+  console.log(`Created ${dispositivoRecords.length} dispositivos`)
+
   await prisma.unidadProduccion.createMany({ data: unidadRecords })
   console.log(`Created ${unidadRecords.length} unidades de produccion`)
 
   await prisma.equipo.createMany({ data: equipoRecords })
   console.log(`Created ${equipoRecords.length} equipos`)
-
-  // Seed device types (table may not exist yet if migration is pending)
-  await prisma.tipoDispositivo.createMany({
-    data: [
-      { codigo: 'PLC', nombre: 'Controlador Lógico Programable' },
-      { codigo: 'NOD', nombre: 'Nodo IOT' },
-    ],
-  }).catch(() => console.log('Skipped tipos de dispositivo (table not yet migrated)'))
-  console.log('Created 2 tipos de dispositivo')
 
   // ------------------------------------------------------------------
   // Users

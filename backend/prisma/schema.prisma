@@ -183,7 +183,7 @@ model UnidadProduccion {
   posicion       Json?
   detalles       Json?
   tipoModuloId   String?
-  topicMqtt      String?  @unique
+  topicMqtt      String?
   dispositivoId  String?
   configuracion  Json?
   createdAt      DateTime @default(now())

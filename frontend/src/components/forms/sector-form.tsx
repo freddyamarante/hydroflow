@@ -53,6 +53,7 @@ interface SectorFormProps {
   usuarios?: UsuarioOption[];
   areaId?: string;
   parentBounds?: GeoJSON.Polygon | null;
+  siblingSectors?: { id: string; nombre: string; bounds: GeoJSON.Polygon }[];
 }
 
 export function SectorForm({
@@ -63,6 +64,7 @@ export function SectorForm({
   usuarios = [],
   areaId,
   parentBounds,
+  siblingSectors,
 }: SectorFormProps) {
   const [mapOpen, setMapOpen] = useState(!!defaultValues?.bounds);
 
@@ -196,6 +198,7 @@ export function SectorForm({
                         value={field.value as GeoJSON.Polygon | null | undefined}
                         onChange={field.onChange}
                         parentBounds={parentBounds}
+                        siblingPolygons={siblingSectors}
                       />
                     </FormControl>
                     <FormMessage />

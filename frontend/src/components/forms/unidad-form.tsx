@@ -65,6 +65,7 @@ interface UnidadFormProps {
   sectores?: SectorOption[];
   sectorId?: string;
   parentBounds?: GeoJSON.Polygon | null;
+  siblingUnidades?: { id: string; nombre: string; posicion: { lat: number; lng: number } }[];
   dispositivos?: DispositivoOption[];
 }
 
@@ -75,6 +76,7 @@ export function UnidadForm({
   sectores = [],
   sectorId,
   parentBounds,
+  siblingUnidades,
   dispositivos = [],
 }: UnidadFormProps) {
   const [mapOpen, setMapOpen] = useState(!!defaultValues?.posicion);
@@ -223,6 +225,7 @@ export function UnidadForm({
                         value={field.value as { lat: number; lng: number } | null | undefined}
                         onChange={field.onChange}
                         parentBounds={parentBounds}
+                        siblingPoints={siblingUnidades}
                       />
                     </FormControl>
                     <FormMessage />

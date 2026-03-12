@@ -102,7 +102,7 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
       const area = await prisma.area.findUnique({
         where: { id },
         include: {
-          localProductivo: { select: { id: true, nombre: true } },
+          localProductivo: { select: { id: true, nombre: true, bounds: true } },
           sectores: {
             select: {
               id: true,
@@ -127,6 +127,11 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
         where: { sector: { areaId: id } },
       });
 
+      const siblingAreas = await prisma.area.findMany({
+        where: { localProductivoId: area.localProductivoId, id: { not: id } },
+        select: { id: true, nombre: true, bounds: true },
+      });
+
       const { sectores, ...areaData } = area;
 
       const user = request.user as { id: string; rol: Rol };
@@ -146,6 +151,7 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
           unidadesCount: s._count.unidadesProduccion,
           usuarioResponsable: s.usuarioResponsable,
         })),
+        siblingAreas,
         currentUserLocalRole,
       };
     } catch (error) {
