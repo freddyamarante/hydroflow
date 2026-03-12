@@ -17,8 +17,9 @@ async function main() {
   await prisma.regla.deleteMany()
   await prisma.equipo.deleteMany()
   await prisma.unidadProduccion.deleteMany()
-  await prisma.dispositivo.deleteMany()
-  await prisma.tipoDispositivo.deleteMany()
+  // dispositivo/tipoDispositivo tables may not exist yet (no migration)
+  await prisma.dispositivo.deleteMany().catch(() => {})
+  await prisma.tipoDispositivo.deleteMany().catch(() => {})
   await prisma.sector.deleteMany()
   await prisma.area.deleteMany()
   await prisma.usuarioLocalProductivo.deleteMany()
@@ -190,13 +191,13 @@ async function main() {
   await prisma.equipo.createMany({ data: equipoRecords })
   console.log(`Created ${equipoRecords.length} equipos`)
 
-  // Seed device types
+  // Seed device types (table may not exist yet if migration is pending)
   await prisma.tipoDispositivo.createMany({
     data: [
       { codigo: 'PLC', nombre: 'Controlador Lógico Programable' },
       { codigo: 'NOD', nombre: 'Nodo IOT' },
     ],
-  })
+  }).catch(() => console.log('Skipped tipos de dispositivo (table not yet migrated)'))
   console.log('Created 2 tipos de dispositivo')
 
   // ------------------------------------------------------------------
