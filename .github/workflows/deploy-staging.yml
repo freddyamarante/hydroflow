@@ -9,27 +9,58 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Wait for server to be ready
+        run: |
+          for i in 1 2 3 4 5; do
+            nc -z -w 5 ${{ secrets.SERVER_HOST }} 22 && echo "SSH port open" && exit 0
+            echo "Attempt $i: SSH port not ready, waiting 30s..."
+            sleep 30
+          done
+          echo "SSH port not reachable after 5 attempts"
+          exit 1
+
       - name: Deploy to Staging
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 20m
           script: |
+            set -e
+
+            # Free disk space before anything else
+            docker system prune -af
+            docker builder prune -af
+
             cd /opt/hydroflow/hydroflow
 
-            # Pull latest code
+            # Pull latest code (reset local changes from manual edits)
             git fetch origin staging
             git checkout staging
-            git pull origin staging
+            git reset --hard origin/staging
 
-            # Build and deploy staging
-            docker compose -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d --build
+            # Ensure shared proxy network exists
+            docker network create hydroflow-proxy 2>/dev/null || true
+
+            # Build and deploy staging services
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
+
+            # Push schema to DB and re-seed
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bunx prisma db push --accept-data-loss
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bun run prisma/seed.ts
+
+            # Recreate nginx so it picks up config changes (git reset creates new inodes)
+            docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
+
+            # Reload nginx to re-resolve DNS for new container IPs
+            docker exec hydroflow-nginx nginx -s reload
 
             # Cleanup
             docker image prune -f

@@ -1,10 +1,10 @@
-# Production Environment (deployed via GitHub Actions)
-version: '3.8'
+# Production Environment
+# Requires external network: docker network create hydroflow-proxy
 
 services:
   postgres:
     image: timescale/timescaledb:latest-pg16
-    container_name: hydroflow-db
+    container_name: hydroflow-db-prod
     restart: unless-stopped
     environment:
       POSTGRES_USER: hydroflow
@@ -20,58 +20,86 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - hydroflow
+      - hydroflow-prod
 
   redis:
     image: redis:7-alpine
-    container_name: hydroflow-cache
+    container_name: hydroflow-cache-prod
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - hydroflow
+      - hydroflow-prod
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: hydroflow-mqtt-prod
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ../mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - hydroflow-prod
 
   backend:
     build:
-      context: ../backend
-      dockerfile: Dockerfile
-    container_name: hydroflow-api
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: hydroflow-api-prod
     restart: unless-stopped
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow
       REDIS_URL: redis://redis:6379
-      MQTT_BROKER_URL: mqtt://178.156.236.104:1883
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
       HOST: 0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     networks:
-      - hydroflow
+      hydroflow-prod:
+      hydroflow-proxy:
+        aliases:
+          - backend-prod
 
-  nginx:
-    image: nginx:alpine
-    container_name: hydroflow-nginx
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.hydro-flow.io
+    container_name: hydroflow-frontend-prod
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ../nginx/nginx-backend-only.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    networks:
-      - hydroflow
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
     depends_on:
       - backend
+    networks:
+      hydroflow-prod:
+      hydroflow-proxy:
+        aliases:
+          - frontend-prod
 
 networks:
-  hydroflow:
+  hydroflow-prod:
     driver: bridge
+  hydroflow-proxy:
+    external: true
 
 volumes:
   postgres_data:
   redis_data:
+  mosquitto_data:
+  mosquitto_log:

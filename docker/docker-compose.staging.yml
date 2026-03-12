@@ -1,5 +1,5 @@
-# Staging Environment (deployed via GitHub Actions)
-version: '3.8'
+# Staging Environment
+# Requires external network: docker network create hydroflow-proxy
 
 services:
   postgres:
@@ -33,45 +33,87 @@ services:
     networks:
       - hydroflow-staging
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: hydroflow-mqtt-staging
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1884:1883"
+    volumes:
+      - ../mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data_staging:/mosquitto/data
+    networks:
+      - hydroflow-staging
+
   backend:
     build:
-      context: ../backend
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: backend/Dockerfile
     container_name: hydroflow-api-staging
     restart: unless-stopped
     environment:
       NODE_ENV: staging
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
       REDIS_URL: redis://redis:6379
-      MQTT_BROKER_URL: mqtt://178.156.236.104:1883
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
       HOST: 0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     networks:
-      - hydroflow-staging
+      hydroflow-staging:
+      hydroflow-proxy:
+        aliases:
+          - backend-staging
 
-  nginx:
-    image: nginx:alpine
-    container_name: hydroflow-nginx-staging
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api-staging.hydro-flow.io
+    container_name: hydroflow-frontend-staging
     restart: unless-stopped
-    ports:
-      - "8080:80"
-      - "8443:443"
-    volumes:
-      - ../nginx/nginx-backend-only.conf:/etc/nginx/nginx.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    networks:
-      - hydroflow-staging
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
     depends_on:
       - backend
+    networks:
+      hydroflow-staging:
+      hydroflow-proxy:
+        aliases:
+          - frontend-staging
+
+  mqtt-mock:
+    build:
+      context: ..
+      dockerfile: scripts/Dockerfile
+    container_name: hydroflow-mqtt-mock-staging
+    restart: unless-stopped
+    environment:
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
+      MOCK_INTERVAL_MS: "15000"
+      MOCK_RETENTION_HOURS: "24"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hydroflow-staging
 
 networks:
   hydroflow-staging:
     driver: bridge
+  hydroflow-proxy:
+    external: true
 
 volumes:
   postgres_data_staging:
   redis_data_staging:
+  mosquitto_data_staging:
