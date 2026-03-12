@@ -33,6 +33,20 @@ services:
     networks:
       - hydroflow-prod
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: hydroflow-mqtt-prod
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ../mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - hydroflow-prod
+
   backend:
     build:
       context: ..
@@ -43,13 +57,15 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow
       REDIS_URL: redis://redis:6379
-      MQTT_BROKER_URL: mqtt://178.156.236.104:1883
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
       HOST: 0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     networks:
       hydroflow-prod:
       hydroflow-proxy:
@@ -85,3 +101,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  mosquitto_data:
+  mosquitto_log:

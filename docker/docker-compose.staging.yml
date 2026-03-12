@@ -33,6 +33,18 @@ services:
     networks:
       - hydroflow-staging
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: hydroflow-mqtt-staging
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1884:1883"
+    volumes:
+      - ../mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data_staging:/mosquitto/data
+    networks:
+      - hydroflow-staging
+
   backend:
     build:
       context: ..
@@ -43,13 +55,15 @@ services:
       NODE_ENV: staging
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
       REDIS_URL: redis://redis:6379
-      MQTT_BROKER_URL: mqtt://178.156.236.104:1883
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
       HOST: 0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
+      mosquitto:
+        condition: service_started
     networks:
       hydroflow-staging:
       hydroflow-proxy:
@@ -83,7 +97,7 @@ services:
     container_name: hydroflow-mqtt-mock-staging
     restart: unless-stopped
     environment:
-      MQTT_BROKER_URL: mqtt://178.156.236.104:1883
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
       MOCK_INTERVAL_MS: "15000"
       MOCK_RETENTION_HOURS: "24"
@@ -102,3 +116,4 @@ networks:
 volumes:
   postgres_data_staging:
   redis_data_staging:
+  mosquitto_data_staging:
