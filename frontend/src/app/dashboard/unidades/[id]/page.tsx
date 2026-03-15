@@ -19,6 +19,8 @@ interface UnidadBasic {
 interface HierarchyInfo {
   sectorName: string;
   sectorId: string;
+  areaId: string;
+  areaName: string;
   localId: string;
   localName: string;
 }
@@ -45,6 +47,8 @@ export default function UnidadRealtimePage() {
             setHierarchy({
               sectorName: sector.nombre,
               sectorId: sector.id,
+              areaId: sector.area.id,
+              areaName: sector.area.nombre,
               localId: sector.area.localProductivo.id,
               localName: sector.area.localProductivo.nombre,
             });
@@ -68,20 +72,18 @@ export default function UnidadRealtimePage() {
     timestamp: item.timestamp,
   }));
 
-  const localId = hierarchy?.localId;
-  const localName = hierarchy?.localName;
-  const sectorId = hierarchy?.sectorId;
-  const sectorName = hierarchy?.sectorName;
-
   const breadcrumbs = [
     { label: 'Dashboard', href: '/dashboard' },
-    ...(localId && localName
-      ? [{ label: localName, href: `/dashboard/locales/${localId}` }]
+    ...(hierarchy?.localId
+      ? [{ label: hierarchy.localName, href: `/dashboard/locales/${hierarchy.localId}` }]
       : []),
-    ...(localId && sectorId && sectorName
-      ? [{ label: sectorName, href: `/dashboard/locales/${localId}/sectores/${sectorId}` }]
+    ...(hierarchy?.areaId
+      ? [{ label: hierarchy.areaName, href: `/dashboard/locales/${hierarchy.localId}/areas/${hierarchy.areaId}` }]
       : []),
-    { label: unidad?.nombre ?? 'Unidad', href: `/dashboard/unidades/${unidadId}` },
+    ...(hierarchy?.sectorId
+      ? [{ label: hierarchy.sectorName, href: `/dashboard/locales/${hierarchy.localId}/areas/${hierarchy.areaId}/sectores/${hierarchy.sectorId}` }]
+      : []),
+    { label: unidad?.nombre ?? 'Unidad' },
   ];
 
   if (loadingInfo) {

@@ -89,6 +89,7 @@ async function main() {
           nombre: local.nombre,
           tipoProductivo: local.tipoProductivo,
           empresaId,
+          ...(local.bounds ? { bounds: local.bounds } : {}),
         })
 
         for (const area of local.areas) {
@@ -99,6 +100,7 @@ async function main() {
             nombre: area.nombre,
             localProductivoId: localId,
             actividadProductiva: area.actividadProductiva,
+            ...(area.bounds ? { bounds: area.bounds } : {}),
           })
 
           for (const sector of area.sectores) {
@@ -109,6 +111,7 @@ async function main() {
               nombre: sector.nombre,
               areaId,
               tipo: sector.tipo,
+              ...(sector.bounds ? { bounds: sector.bounds } : {}),
             })
 
             // Create dispositivo for this sector
@@ -142,6 +145,7 @@ async function main() {
                 topicMqtt: topic,
                 dispositivoId,
                 configuracion: { ancho_canal: unidad.anchoCanal },
+                ...(unidad.posicion ? { posicion: unidad.posicion } : {}),
               })
 
               equipoRecords.push(

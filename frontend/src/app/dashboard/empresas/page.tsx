@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface Empresa {
@@ -29,6 +30,7 @@ interface Empresa {
   areaProduccion: string | null;
   paginaWeb: string | null;
   grupoCorporativoId: string | null;
+  grupoCorporativo?: { id: string; razonSocial: string } | null;
   _count?: {
     localesProductivos: number;
   };
@@ -185,6 +187,13 @@ export default function EmpresasPage() {
       id: 'ruc',
       header: 'RUC',
       accessorKey: 'ruc',
+    },
+    {
+      id: 'grupo',
+      header: 'Grupo Corporativo',
+      accessorFn: (row) => row.grupoCorporativo ? (
+        <Badge variant="outline">{row.grupoCorporativo.razonSocial}</Badge>
+      ) : '-',
     },
     {
       id: 'locales',

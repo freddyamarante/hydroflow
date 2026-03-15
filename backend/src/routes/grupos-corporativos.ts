@@ -29,6 +29,7 @@ const gruposCorporativosRoutes: FastifyPluginAsync = async (fastify) => {
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: { _count: { select: { empresas: true } } },
         }),
         prisma.grupoCorporativo.count(),
       ]);

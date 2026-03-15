@@ -150,7 +150,19 @@ function PointInteraction({
   useEffect(() => {
     if (!isLoaded || !map) return;
 
+    let mouseDownPos: { x: number; y: number } | null = null;
+    const DRAG_THRESHOLD = 5;
+
+    const onMouseDown = (e: MapLibreGL.MapMouseEvent) => {
+      mouseDownPos = { x: e.point.x, y: e.point.y };
+    };
+
     const handleClick = (e: MapLibreGL.MapMouseEvent) => {
+      if (mouseDownPos) {
+        const dx = e.point.x - mouseDownPos.x;
+        const dy = e.point.y - mouseDownPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) return;
+      }
       const clickedPos = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       if (parentBoundsRef.current && !pointInsideBounds(clickedPos, parentBoundsRef.current)) {
         onError('El punto debe estar dentro de los límites del sector');
@@ -159,6 +171,7 @@ function PointInteraction({
       onPositionChange(clickedPos);
     };
 
+    map.on('mousedown', onMouseDown);
     map.on('click', handleClick);
     addBoundsLayer(map);
     addSiblingLayers(map);
@@ -178,6 +191,7 @@ function PointInteraction({
     }
 
     return () => {
+      map.off('mousedown', onMouseDown);
       map.off('click', handleClick);
       try {
         if (map.getLayer('parent-bounds-line')) map.removeLayer('parent-bounds-line');
@@ -286,7 +300,7 @@ function PointInteraction({
 
 export function PointEditor({ value, onChange, parentBounds, siblingPoints = [], className }: PointEditorProps) {
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(value ?? null);
-  const [isSatellite, setIsSatellite] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);

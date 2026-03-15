@@ -35,6 +35,10 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: {
+            grupoCorporativo: { select: { id: true, razonSocial: true } },
+            _count: { select: { localesProductivos: true } },
+          },
         }),
         prisma.empresa.count(),
       ]);

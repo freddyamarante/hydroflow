@@ -7,15 +7,23 @@ import { Trash2, Satellite, Map as MapIcon, LocateFixed } from 'lucide-react';
 import { getPolygonBBox } from '@/lib/geo';
 import type MapLibreGL from 'maplibre-gl';
 
+interface ChildPolygon {
+  id: string;
+  nombre: string;
+  bounds: GeoJSON.Polygon;
+}
+
 interface RectangleEditorProps {
   value?: GeoJSON.Polygon | null;
   onChange: (bounds: GeoJSON.Polygon | null) => void;
+  childPolygons?: ChildPolygon[];
   className?: string;
 }
 
+const CHILD_COLORS = ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+
 const DEFAULT_CENTER: [number, number] = [-79.9, -2.2];
 const DEFAULT_ZOOM = 10;
-const ASPECT_RATIO = 16 / 9;
 
 const SATELLITE_STYLE: MapLibreGL.StyleSpecification = {
   version: 8,
@@ -46,11 +54,8 @@ function getRectangleFromCorners(
 ): [number, number][] {
   const west = Math.min(corner1[0], corner2[0]);
   const east = Math.max(corner1[0], corner2[0]);
-  const width = east - west;
-  const height = width / ASPECT_RATIO;
-  const centerLat = (corner1[1] + corner2[1]) / 2;
-  const south = centerLat - height / 2;
-  const north = centerLat + height / 2;
+  const south = Math.min(corner1[1], corner2[1]);
+  const north = Math.max(corner1[1], corner2[1]);
 
   return [
     [west, south],
@@ -75,6 +80,7 @@ interface RectangleInteractionProps {
   setDrawing: (d: boolean) => void;
   corner1: [number, number] | null;
   setCorner1: (c: [number, number] | null) => void;
+  childPolygons?: ChildPolygon[];
   isSatellite: boolean;
   recenterTrigger: number;
 }
@@ -86,6 +92,7 @@ function RectangleInteraction({
   setDrawing,
   corner1,
   setCorner1,
+  childPolygons,
   isSatellite,
   recenterTrigger,
 }: RectangleInteractionProps) {
@@ -156,8 +163,44 @@ function RectangleInteraction({
       });
     }
 
+    // Child polygon overlays (e.g. areas inside a local)
+    if (childPolygons) {
+      for (let i = 0; i < childPolygons.length; i++) {
+        const child = childPolygons[i];
+        const color = CHILD_COLORS[i % CHILD_COLORS.length];
+        const sourceId = `child-${child.id}-source`;
+        const fillId = `child-${child.id}-fill`;
+        const lineId = `child-${child.id}-line`;
+        const labelId = `child-${child.id}-label`;
+
+        if (!map.getSource(sourceId)) {
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: { type: 'Feature', properties: {}, geometry: child.bounds },
+          });
+        }
+        if (!map.getLayer(fillId)) {
+          map.addLayer({ id: fillId, type: 'fill', source: sourceId, paint: { 'fill-color': color, 'fill-opacity': isSatellite ? 0.3 : 0.15 } });
+        }
+        if (!map.getLayer(lineId)) {
+          map.addLayer({ id: lineId, type: 'line', source: sourceId, paint: { 'line-color': color, 'line-width': isSatellite ? 3 : 2 } });
+        }
+        if (!map.getLayer(labelId)) {
+          map.addLayer({ id: labelId, type: 'symbol', source: sourceId, layout: { 'text-field': child.nombre, 'text-size': 12, 'text-anchor': 'center' }, paint: { 'text-color': color, 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
+        }
+      }
+    }
+
     return () => {
       try {
+        if (childPolygons) {
+          for (const child of childPolygons) {
+            if (map.getLayer(`child-${child.id}-label`)) map.removeLayer(`child-${child.id}-label`);
+            if (map.getLayer(`child-${child.id}-line`)) map.removeLayer(`child-${child.id}-line`);
+            if (map.getLayer(`child-${child.id}-fill`)) map.removeLayer(`child-${child.id}-fill`);
+            if (map.getSource(`child-${child.id}-source`)) map.removeSource(`child-${child.id}-source`);
+          }
+        }
         if (map.getLayer('rectangle-line')) map.removeLayer('rectangle-line');
         if (map.getLayer('rectangle-fill')) map.removeLayer('rectangle-fill');
         if (map.getSource('rectangle-source'))
@@ -166,7 +209,7 @@ function RectangleInteraction({
         // ignore
       }
     };
-  }, [isLoaded, map]);
+  }, [isLoaded, map, childPolygons, isSatellite]);
 
   // Re-add source/layers after a style change (setStyle removes them)
   useEffect(() => {
@@ -216,7 +259,19 @@ function RectangleInteraction({
   useEffect(() => {
     if (!isLoaded || !map) return;
 
+    let mouseDownPos: { x: number; y: number } | null = null;
+    const DRAG_THRESHOLD = 5;
+
+    const onMouseDown = (e: MapLibreGL.MapMouseEvent) => {
+      mouseDownPos = { x: e.point.x, y: e.point.y };
+    };
+
     const handleClick = (e: MapLibreGL.MapMouseEvent) => {
+      if (mouseDownPos) {
+        const dx = e.point.x - mouseDownPos.x;
+        const dy = e.point.y - mouseDownPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) return;
+      }
       const lngLat: [number, number] = [e.lngLat.lng, e.lngLat.lat];
 
       if (!drawingRef.current) {
@@ -263,10 +318,12 @@ function RectangleInteraction({
       }
     };
 
+    map.on('mousedown', onMouseDown);
     map.on('click', handleClick);
     map.on('mousemove', handleMouseMove);
 
     return () => {
+      map.off('mousedown', onMouseDown);
       map.off('click', handleClick);
       map.off('mousemove', handleMouseMove);
     };
@@ -334,11 +391,12 @@ function StyleToggle({ isSatellite, onToggle }: StyleToggleProps) {
 export function RectangleEditor({
   value,
   onChange,
+  childPolygons,
   className,
 }: RectangleEditorProps) {
   const [corner1, setCorner1] = useState<[number, number] | null>(null);
   const [drawing, setDrawing] = useState(false);
-  const [isSatellite, setIsSatellite] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(true);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
 
   const initialCenter = value
@@ -375,6 +433,7 @@ export function RectangleEditor({
             setDrawing={setDrawing}
             corner1={corner1}
             setCorner1={setCorner1}
+            childPolygons={childPolygons}
             isSatellite={isSatellite}
             recenterTrigger={recenterTrigger}
           />

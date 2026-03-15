@@ -208,6 +208,29 @@ function BoundsInteraction({
         });
       }
 
+      // Cursor-following ghost point (visible while drawing)
+      if (!m.getSource('cursor-point-source')) {
+        m.addSource('cursor-point-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+      if (!m.getLayer('cursor-point-layer')) {
+        m.addLayer({
+          id: 'cursor-point-layer',
+          type: 'circle',
+          source: 'cursor-point-source',
+          paint: {
+            'circle-radius': 5,
+            'circle-color': '#3b82f6',
+            'circle-opacity': 0.5,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-opacity': 0.5,
+          },
+        });
+      }
+
       layersAddedRef.current = true;
     },
     [siblingPolygons, isSatellite]
@@ -215,6 +238,8 @@ function BoundsInteraction({
 
   const removeLayers = useCallback((m: MapLibreGL.Map) => {
     try {
+      if (m.getLayer('cursor-point-layer')) m.removeLayer('cursor-point-layer');
+      if (m.getSource('cursor-point-source')) m.removeSource('cursor-point-source');
       if (m.getLayer('vertices-layer')) m.removeLayer('vertices-layer');
       if (m.getSource('vertices-source')) m.removeSource('vertices-source');
       if (m.getLayer('polygon-line')) m.removeLayer('polygon-line');
@@ -262,12 +287,25 @@ function BoundsInteraction({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map, addLayers, removeLayers]);
 
-  // Click handler
+  // Click handler — ignore clicks that are part of a drag/pan
   useEffect(() => {
     if (!isLoaded || !map) return;
 
+    let mouseDownPos: { x: number; y: number } | null = null;
+    const DRAG_THRESHOLD = 5; // pixels
+
+    const onMouseDown = (e: MapLibreGL.MapMouseEvent) => {
+      mouseDownPos = { x: e.point.x, y: e.point.y };
+    };
+
     const handler = (e: MapLibreGL.MapMouseEvent) => {
       if (closed) return;
+      // If mouse moved more than threshold between down and up, it was a drag
+      if (mouseDownPos) {
+        const dx = e.point.x - mouseDownPos.x;
+        const dy = e.point.y - mouseDownPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) return;
+      }
       const point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
       if (parentBounds) {
         const parentRing = parentBounds.coordinates[0] as [number, number][];
@@ -279,9 +317,38 @@ function BoundsInteraction({
       onClickMap(point);
     };
 
+    const onMouseMove = (e: MapLibreGL.MapMouseEvent) => {
+      if (closed) return;
+      const source = map.getSource('cursor-point-source') as MapLibreGL.GeoJSONSource | undefined;
+      if (source) {
+        source.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Point', coordinates: [e.lngLat.lng, e.lngLat.lat] },
+          }],
+        });
+      }
+    };
+
+    // Show crosshair while drawing
+    if (!closed) {
+      map.getCanvas().style.cursor = 'crosshair';
+    }
+
+    map.on('mousedown', onMouseDown);
     map.on('click', handler);
+    map.on('mousemove', onMouseMove);
     return () => {
-      map.off('click', handler);
+      try {
+        map.off('mousedown', onMouseDown);
+        map.off('click', handler);
+        map.off('mousemove', onMouseMove);
+        map.getCanvas().style.cursor = '';
+        const source = map.getSource('cursor-point-source') as MapLibreGL.GeoJSONSource | undefined;
+        if (source) source.setData({ type: 'FeatureCollection', features: [] });
+      } catch { /* map may already be destroyed */ }
     };
   }, [isLoaded, map, closed, onClickMap, parentBounds, onError]);
 
@@ -347,6 +414,11 @@ function BoundsInteraction({
         map.setPaintProperty('vertices-layer', 'circle-radius', isSatellite ? 7 : 5);
         map.setPaintProperty('vertices-layer', 'circle-color', isSatellite ? '#93c5fd' : '#3b82f6');
         map.setPaintProperty('vertices-layer', 'circle-stroke-width', isSatellite ? 3 : 2);
+      }
+      if (map.getLayer('cursor-point-layer')) {
+        map.setPaintProperty('cursor-point-layer', 'circle-radius', isSatellite ? 7 : 5);
+        map.setPaintProperty('cursor-point-layer', 'circle-color', isSatellite ? '#93c5fd' : '#3b82f6');
+        map.setPaintProperty('cursor-point-layer', 'circle-stroke-width', isSatellite ? 3 : 2);
       }
       // Adjust sibling layer opacities for satellite contrast
       if (siblingPolygons) {
@@ -460,7 +532,7 @@ function updateSiblingData(
 export function BoundsEditor({ value, onChange, parentBounds, siblingPolygons, className }: BoundsEditorProps) {
   const [vertices, setVertices] = useState<[number, number][]>([]);
   const [closed, setClosed] = useState(false);
-  const [isSatellite, setIsSatellite] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
