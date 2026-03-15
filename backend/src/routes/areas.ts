@@ -2,7 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { Prisma, Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { getUserLocalIds, requireWriteAccess, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, requireReadAccess, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
+import { requireAdmin } from '../lib/rbac.js';
 import { clipBounds, isPointInsideBounds } from '../lib/geo.js';
 
 const createAreaSchema = z.object({
@@ -69,7 +70,7 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /areas/:id - Single area
-  fastify.get('/areas/:id', async (request, reply) => {
+  fastify.get('/areas/:id', { preHandler: [requireReadAccess(async (req) => getLocalIdForArea((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -98,7 +99,7 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /areas/:id/dashboard - Area dashboard data
-  fastify.get('/areas/:id/dashboard', async (request, reply) => {
+  fastify.get('/areas/:id/dashboard', { preHandler: [requireReadAccess(async (req) => getLocalIdForArea((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -307,8 +308,8 @@ const areasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /areas/:id - Delete area (supervisor+)
-  fastify.delete('/areas/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForArea((req.params as { id: string }).id))] }, async (request, reply) => {
+  // DELETE /areas/:id - Delete area (admin only)
+  fastify.delete('/areas/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 

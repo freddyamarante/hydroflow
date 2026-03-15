@@ -2,7 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { getUserLocalIds, requireWriteAccess, getLocalIdForSector, getLocalIdForUnidad } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, requireReadAccess, getLocalIdForSector, getLocalIdForUnidad } from '../lib/access.js';
+import { requireAdmin } from '../lib/rbac.js';
 
 async function deriveTopicMqtt(dispositivoId: string): Promise<string> {
   const dispositivo = await prisma.dispositivo.findUnique({
@@ -81,7 +82,7 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /unidades/:id - Single unidad
-  fastify.get('/unidades/:id', async (request, reply) => {
+  fastify.get('/unidades/:id', { preHandler: [requireReadAccess(async (req) => getLocalIdForUnidad((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -176,8 +177,8 @@ const unidadesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /unidades/:id - Delete unidad (supervisor+)
-  fastify.delete('/unidades/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForUnidad((req.params as { id: string }).id))] }, async (request, reply) => {
+  // DELETE /unidades/:id - Delete unidad (admin only)
+  fastify.delete('/unidades/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 

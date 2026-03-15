@@ -10,15 +10,6 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
-const registerSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  contrasena: z.string().min(8, 'Password must be at least 8 characters'),
-  nombre: z.string().min(1, 'Name is required'),
-  apellido: z.string().optional(),
-  telefono: z.string().optional(),
-  empresaId: z.string().optional(),
-});
-
 const isSecure = config.NODE_ENV !== 'development';
 const cookieDomain = isSecure ? '.hydro-flow.io' : undefined;
 
@@ -103,67 +94,6 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'An error occurred during login',
-      });
-    }
-  });
-
-  // POST /auth/register - Register new user
-  fastify.post('/auth/register', async (request, reply) => {
-    try {
-      const data = registerSchema.parse(request.body);
-
-      const existing = await prisma.usuario.findUnique({
-        where: { email: data.email },
-      });
-
-      if (existing) {
-        return reply.code(400).send({
-          error: 'Validation Error',
-          message: 'Email already in use',
-        });
-      }
-
-      const hashedPassword = await argon2.hash(data.contrasena);
-
-      const user = await prisma.usuario.create({
-        data: {
-          email: data.email,
-          contrasena: hashedPassword,
-          nombre: data.nombre,
-          apellido: data.apellido,
-          telefono: data.telefono,
-          empresaId: data.empresaId,
-        },
-        select: {
-          id: true,
-          email: true,
-          nombre: true,
-          apellido: true,
-          rol: true,
-        },
-      });
-
-      const token = fastify.jwt.sign({
-        id: user.id,
-        email: user.email,
-        rol: user.rol,
-      });
-
-      reply.setCookie('token', token, cookieOptions);
-
-      return { user };
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return reply.code(400).send({
-          error: 'Validation Error',
-          message: error.errors[0]?.message || 'Invalid input',
-        });
-      }
-
-      fastify.log.error(error);
-      return reply.code(500).send({
-        error: 'Internal Server Error',
-        message: 'An error occurred during registration',
       });
     }
   });

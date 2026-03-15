@@ -2,8 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { Prisma, Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds, requireWriteAccess, computeUserLocalRole } from '../lib/access.js';
+import { requireAdmin, requireEmpresaAdmin } from '../lib/rbac.js';
+import { getUserLocalIds, requireWriteAccess, requireReadAccess, computeUserLocalRole, getEmpresaIdForLocal } from '../lib/access.js';
 import { clipBounds, isPointInsideBounds } from '../lib/geo.js';
 
 const createLocalSchema = z.object({
@@ -69,7 +69,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /locales/:id - Single local productivo
-  fastify.get('/locales/:id', async (request, reply) => {
+  fastify.get('/locales/:id', { preHandler: [requireReadAccess(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -98,7 +98,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /locales/:id/dashboard - Local productivo dashboard data
-  fastify.get('/locales/:id/dashboard', async (request, reply) => {
+  fastify.get('/locales/:id/dashboard', { preHandler: [requireReadAccess(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -391,8 +391,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /locales/:id/usuarios - List assigned users with their local roles (admin only)
-  fastify.get('/locales/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // GET /locales/:id/usuarios - List assigned users (admin or empresa admin)
+  fastify.get('/locales/:id/usuarios', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -421,8 +421,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /locales/:id/usuarios - Assign user to local (admin only)
-  fastify.post('/locales/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /locales/:id/usuarios - Assign user to local (admin or empresa admin)
+  fastify.post('/locales/:id/usuarios', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = z.object({
@@ -504,8 +504,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /locales/:id/usuarios/:userId - Update local-level role (admin only)
-  fastify.put('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /locales/:id/usuarios/:userId - Update local-level role (admin or empresa admin)
+  fastify.put('/locales/:id/usuarios/:userId', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id, userId } = request.params as { id: string; userId: string };
       const data = z.object({
@@ -555,8 +555,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /locales/:id/usuarios/:userId - Remove assignment (admin only)
-  fastify.delete('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /locales/:id/usuarios/:userId - Remove assignment (admin or empresa admin)
+  fastify.delete('/locales/:id/usuarios/:userId', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id, userId } = request.params as { id: string; userId: string };
 

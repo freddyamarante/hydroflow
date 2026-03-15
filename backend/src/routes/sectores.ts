@@ -2,7 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { Prisma, Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { getUserLocalIds, requireWriteAccess, getLocalIdForSector, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, requireReadAccess, getLocalIdForSector, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
+import { requireAdmin } from '../lib/rbac.js';
 import { isPointInsideBounds } from '../lib/geo.js';
 
 const createSectorSchema = z.object({
@@ -77,7 +78,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /sectores/:id - Single sector
-  fastify.get('/sectores/:id', async (request, reply) => {
+  fastify.get('/sectores/:id', { preHandler: [requireReadAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -106,7 +107,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /sectores/:id/dashboard - Sector dashboard data
-  fastify.get('/sectores/:id/dashboard', async (request, reply) => {
+  fastify.get('/sectores/:id/dashboard', { preHandler: [requireReadAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -289,8 +290,8 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /sectores/:id - Delete sector (supervisor+)
-  fastify.delete('/sectores/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
+  // DELETE /sectores/:id - Delete sector (admin only)
+  fastify.delete('/sectores/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 

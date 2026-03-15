@@ -1,5 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
+import { Rol } from '@prisma/client';
 import prisma from '../lib/prisma.js';
+import { canAccessUnidad } from '../lib/access.js';
 import { addWsConnection, removeWsConnection } from '../services/readings.js';
 
 const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
@@ -14,6 +16,14 @@ const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const { unidadId } = request.params as { unidadId: string };
+    const user = request.user as { id: string; rol: Rol };
+
+    // Check access to this unidad
+    const allowed = await canAccessUnidad(user.id, unidadId, user.rol);
+    if (!allowed) {
+      socket.close(1008, 'Forbidden');
+      return;
+    }
 
     addWsConnection(unidadId, socket);
 
@@ -38,6 +48,16 @@ const lecturasRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({
           error: 'Validation Error',
           message: 'unidadProduccionId query parameter is required',
+        });
+      }
+
+      // Check access to this unidad
+      const user = request.user as { id: string; rol: Rol };
+      const allowed = await canAccessUnidad(user.id, unidadProduccionId, user.rol);
+      if (!allowed) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: 'You do not have access to this unidad',
         });
       }
 

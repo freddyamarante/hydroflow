@@ -2,7 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import argon2 from 'argon2';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
+import { requireAdmin, requireEmpresaAdmin } from '../lib/rbac.js';
+import { Rol } from '@prisma/client';
 
 const createUsuarioSchema = z.object({
   email: z.string().email('Invalid email format'),
@@ -42,9 +43,11 @@ const userSelect = {
 const usuariosRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('onRequest', fastify.authenticate);
 
-  // GET /usuarios - List with pagination and optional empresaId filter
+  // GET /usuarios - List with pagination (scoped by role)
+  // ADMIN: all users; esAdminEmpresa: own empresa; USER: self only
   fastify.get('/usuarios', async (request, reply) => {
     try {
+      const user = request.user as { id: string; rol: Rol; empresaId?: string; esAdminEmpresa: boolean };
       const { page = '1', limit = '20', empresaId } = request.query as {
         page?: string;
         limit?: string;
@@ -54,7 +57,18 @@ const usuariosRoutes: FastifyPluginAsync = async (fastify) => {
       const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
       const skip = (pageNum - 1) * limitNum;
 
-      const where = empresaId ? { empresaId } : {};
+      let where: any = {};
+
+      if (user.rol === 'ADMIN') {
+        // ADMIN can filter by empresaId or see all
+        if (empresaId) where = { empresaId };
+      } else if (user.esAdminEmpresa && user.empresaId) {
+        // Empresa admin: only own empresa users
+        where = { empresaId: user.empresaId };
+      } else {
+        // Regular user: only self
+        where = { id: user.id };
+      }
 
       const [items, total] = await Promise.all([
         prisma.usuario.findMany({
@@ -82,10 +96,28 @@ const usuariosRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /usuarios/:id - Single usuario
+  // GET /usuarios/:id - Single usuario (scoped by role)
   fastify.get('/usuarios/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user as { id: string; rol: Rol; empresaId?: string; esAdminEmpresa: boolean };
+
+      // Access control: ADMIN any, esAdminEmpresa own empresa, USER self only
+      if (user.rol !== 'ADMIN') {
+        if (user.id === id) {
+          // Can always view self
+        } else if (user.esAdminEmpresa && user.empresaId) {
+          const target = await prisma.usuario.findUnique({
+            where: { id },
+            select: { empresaId: true },
+          });
+          if (!target || target.empresaId !== user.empresaId) {
+            return reply.code(403).send({ error: 'Forbidden', message: 'You do not have access to this user' });
+          }
+        } else {
+          return reply.code(403).send({ error: 'Forbidden', message: 'You do not have access to this user' });
+        }
+      }
 
       const usuario = await prisma.usuario.findUnique({
         where: { id },
