@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Breadcrumbs } from '@/components/navigation/breadcrumbs';
@@ -14,180 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Box, Pencil, Trash2, Plus, Map as MapIcon, Satellite, LocateFixed } from 'lucide-react';
-import { getPolygonBBox } from '@/lib/geo';
-import { Map as MapComponent, MapControls, useMap } from '@/components/ui/map';
-
-const SATELLITE_STYLE = {
-  version: 8 as const,
-  sources: {
-    satellite: {
-      type: 'raster' as const,
-      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-      tileSize: 256,
-      maxzoom: 19,
-    },
-  },
-  layers: [
-    { id: 'satellite-layer', type: 'raster' as const, source: 'satellite', minzoom: 0, maxzoom: 22 },
-  ],
-};
-
-const UNIDAD_COLOR = '#3b82f6';
-
-function SectorMapLayers({ sectorBounds, unidades, isSatellite, recenterTrigger, onUnidadClick }: {
-  sectorBounds: GeoJSON.Polygon;
-  unidades: { id: string; nombre: string; posicion: unknown }[];
-  isSatellite: boolean;
-  recenterTrigger: number;
-  onUnidadClick?: (unidadId: string) => void;
-}) {
-  const { map, isLoaded } = useMap();
-  const fittedRef = useRef(false);
-
-  useEffect(() => {
-    if (!isLoaded || !map) return;
-    const unidadesWithPos = unidades.filter((u) => u.posicion);
-
-    function addLayers() {
-      // Sector boundary
-      if (!map!.getSource('sector-bounds-source')) {
-        map!.addSource('sector-bounds-source', {
-          type: 'geojson',
-          data: { type: 'Feature', properties: {}, geometry: sectorBounds },
-        });
-      }
-      if (!map!.getLayer('sector-bounds-fill')) {
-        map!.addLayer({ id: 'sector-bounds-fill', type: 'fill', source: 'sector-bounds-source', paint: { 'fill-color': '#94a3b8', 'fill-opacity': 0.08 } });
-      }
-      if (!map!.getLayer('sector-bounds-line')) {
-        map!.addLayer({ id: 'sector-bounds-line', type: 'line', source: 'sector-bounds-source', paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [4, 3] } });
-      }
-
-      // Unidad points
-      if (!map!.getSource('unidades-source')) {
-        const features = unidadesWithPos.map((u) => {
-          const pos = u.posicion as { lat: number; lng: number };
-          return {
-            type: 'Feature' as const,
-            properties: { id: u.id, nombre: u.nombre },
-            geometry: { type: 'Point' as const, coordinates: [pos.lng, pos.lat] },
-          };
-        });
-        map!.addSource('unidades-source', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features },
-        });
-      }
-      if (!map!.getLayer('unidades-circles')) {
-        map!.addLayer({
-          id: 'unidades-circles', type: 'circle', source: 'unidades-source',
-          paint: {
-            'circle-radius': 7,
-            'circle-color': UNIDAD_COLOR,
-            'circle-stroke-color': '#ffffff',
-            'circle-stroke-width': 2,
-          },
-        });
-      }
-      if (!map!.getLayer('unidades-labels')) {
-        map!.addLayer({
-          id: 'unidades-labels', type: 'symbol', source: 'unidades-source',
-          layout: {
-            'text-field': ['get', 'nombre'],
-            'text-size': 12,
-            'text-anchor': 'top',
-            'text-offset': [0, 1],
-            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-          },
-          paint: {
-            'text-color': UNIDAD_COLOR,
-            'text-halo-color': '#ffffff',
-            'text-halo-width': 1.5,
-          },
-        });
-      }
-    }
-
-    addLayers();
-
-    // Click & hover on unidad points
-    const clickHandler = (e: any) => {
-      const id = e.features?.[0]?.properties?.id;
-      if (id) onUnidadClick?.(id);
-    };
-    const enterHandler = () => { map.getCanvas().style.cursor = 'pointer'; };
-    const leaveHandler = () => { map.getCanvas().style.cursor = ''; };
-
-    if (map.getLayer('unidades-circles')) {
-      map.on('click', 'unidades-circles', clickHandler);
-      map.on('mouseenter', 'unidades-circles', enterHandler);
-      map.on('mouseleave', 'unidades-circles', leaveHandler);
-    }
-
-    const onStyleLoad = () => addLayers();
-    map.on('style.load', onStyleLoad);
-
-    if (!fittedRef.current) {
-      fittedRef.current = true;
-      const coords = sectorBounds.coordinates[0] as [number, number][];
-      const lngs = coords.map((c) => c[0]);
-      const lats = coords.map((c) => c[1]);
-      map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 40, duration: 0 });
-    }
-
-    return () => {
-      try {
-        map.off('style.load', onStyleLoad);
-        if (map.getLayer('unidades-circles')) {
-          map.off('click', 'unidades-circles', clickHandler);
-          map.off('mouseenter', 'unidades-circles', enterHandler);
-          map.off('mouseleave', 'unidades-circles', leaveHandler);
-        }
-        ['unidades-labels', 'unidades-circles'].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
-        if (map.getSource('unidades-source')) map.removeSource('unidades-source');
-        if (map.getLayer('sector-bounds-line')) map.removeLayer('sector-bounds-line');
-        if (map.getLayer('sector-bounds-fill')) map.removeLayer('sector-bounds-fill');
-        if (map.getSource('sector-bounds-source')) map.removeSource('sector-bounds-source');
-      } catch { /* map may already be destroyed */ }
-    };
-  }, [isLoaded, map, sectorBounds, unidades]);
-
-  // Update paint properties for satellite toggle
-  useEffect(() => {
-    if (!isLoaded || !map) return;
-    try {
-      if (map.getLayer('sector-bounds-fill')) map.setPaintProperty('sector-bounds-fill', 'fill-opacity', isSatellite ? 0.2 : 0.08);
-      if (map.getLayer('sector-bounds-line')) {
-        map.setPaintProperty('sector-bounds-line', 'line-color', isSatellite ? '#ffffff' : '#94a3b8');
-        map.setPaintProperty('sector-bounds-line', 'line-width', isSatellite ? 3 : 2);
-      }
-      if (map.getLayer('unidades-circles')) {
-        map.setPaintProperty('unidades-circles', 'circle-stroke-color', isSatellite ? '#000000' : '#ffffff');
-      }
-      if (map.getLayer('unidades-labels')) {
-        map.setPaintProperty('unidades-labels', 'text-halo-color', isSatellite ? '#000000' : '#ffffff');
-        map.setPaintProperty('unidades-labels', 'text-halo-width', isSatellite ? 2 : 1.5);
-      }
-    } catch { /* layers may not exist yet */ }
-  }, [isLoaded, map, isSatellite]);
-
-  // Constrain map to sector bounds
-  useEffect(() => {
-    if (!isLoaded || !map) return;
-    const bbox = getPolygonBBox(sectorBounds, 0.2);
-    map.setMaxBounds(bbox);
-    return () => { try { map.setMaxBounds(null); } catch { /* ignore */ } };
-  }, [isLoaded, map, sectorBounds]);
-
-  // Recenter
-  useEffect(() => {
-    if (!isLoaded || !map || recenterTrigger === 0) return;
-    map.fitBounds(getPolygonBBox(sectorBounds, 0), { padding: 40, duration: 300 });
-  }, [isLoaded, map, sectorBounds, recenterTrigger]);
-
-  return null;
-}
+import { Box, Pencil, Trash2, Plus } from 'lucide-react';
+import { DashboardMapCard, PointOverlayLayers } from '@/components/maps/dashboard-map';
 
 interface SectorDashboard {
   currentUserLocalRole: 'ADMIN' | 'SUPERVISOR' | 'VISOR' | null;
@@ -228,8 +56,6 @@ export default function SectorDetailPage() {
   const [deleteUnidadDialogOpen, setDeleteUnidadDialogOpen] = useState(false);
   const [selectedUnidad, setSelectedUnidad] = useState<SectorDashboard['unidades'][0] | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [isSatellite, setIsSatellite] = useState(true);
-  const [recenterTrigger, setRecenterTrigger] = useState(0);
   const [localUsuarios, setLocalUsuarios] = useState<{ id: string; nombre: string; apellido?: string | null }[]>([]);
 
   const fetchDashboard = useCallback(async () => {
@@ -316,25 +142,13 @@ export default function SectorDetailPage() {
       </StatsGrid>
 
       {sectorBounds && (
-        <Card className="p-0 gap-0 overflow-hidden">
-          <CardHeader className="p-4"><CardTitle>Mapa del Sector</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <div className="relative h-[500px]">
-              <div className="absolute top-2 left-2 z-10">
-                <Button type="button" variant="secondary" size="icon" className="size-8 shadow-md" onClick={() => setRecenterTrigger((n) => n + 1)} title="Centrar en el sector"><LocateFixed className="size-4" /></Button>
-              </div>
-              <div className="absolute top-2 right-2 z-10">
-                <Button type="button" variant="secondary" size="icon" className="size-8" onClick={() => setIsSatellite(prev => !prev)} title={isSatellite ? 'Vista mapa' : 'Vista satelital'}>
-                  {isSatellite ? <MapIcon className="size-4" /> : <Satellite className="size-4" />}
-                </Button>
-              </div>
-              <MapComponent center={[-79.9, -2.2]} zoom={10} className="h-full w-full" styles={isSatellite ? { light: SATELLITE_STYLE, dark: SATELLITE_STYLE } : undefined}>
-                <SectorMapLayers sectorBounds={sectorBounds} unidades={unidades} isSatellite={isSatellite} recenterTrigger={recenterTrigger} onUnidadClick={(unidadId) => router.push(`/dashboard/unidades/${unidadId}`)} />
-                <MapControls position="bottom-right" showZoom />
-              </MapComponent>
-            </div>
-          </CardContent>
-        </Card>
+        <DashboardMapCard title="Mapa del Sector" bounds={sectorBounds}>
+          {(isSatellite) => (
+            <PointOverlayLayers parentId="sector" parentBounds={sectorBounds} isSatellite={isSatellite} onPointClick={(unidadId) => router.push(`/dashboard/unidades/${unidadId}`)}>
+              {unidades}
+            </PointOverlayLayers>
+          )}
+        </DashboardMapCard>
       )}
 
       <Card>
