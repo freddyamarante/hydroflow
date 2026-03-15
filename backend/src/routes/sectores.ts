@@ -8,7 +8,9 @@ const createSectorSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   areaId: z.string().min(1, 'Area ID is required'),
   tipo: z.string().optional(),
-  bounds: z.any().optional(),
+  bounds: z.any().refine((v) => v && v.type === 'Polygon' && v.coordinates?.length > 0, {
+    message: 'Bounds (map polygon) is required',
+  }),
   detalles: z.any().optional(),
   usuarioResponsableId: z.string().optional().transform(v => v || undefined),
 });

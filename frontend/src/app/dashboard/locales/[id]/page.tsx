@@ -119,7 +119,7 @@ export default function LocalDetailPage() {
       setLoading(true);
       const res = await api.get(`/api/locales/${localId}/dashboard`);
       setData(res.data);
-      if (res.data.local.empresaId) fetchLocalUsuarios(res.data.local.empresaId);
+      if (res.data.currentUserLocalRole === 'ADMIN' && res.data.local.empresaId) fetchLocalUsuarios(res.data.local.empresaId);
     } catch {
       setError('Error al cargar los datos del local');
     } finally {

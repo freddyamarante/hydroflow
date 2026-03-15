@@ -14,7 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Box, Pencil, Trash2, Plus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Box, Pencil, Trash2, Plus, MapPinOff } from 'lucide-react';
 import { DashboardMapCard, PointOverlayLayers } from '@/components/maps/dashboard-map';
 
 interface SectorDashboard {
@@ -62,14 +63,14 @@ export default function SectorDetailPage() {
   const fetchDashboard = useCallback(async () => {
     try {
       setLoading(true);
-      const [sectorRes, localUsersRes] = await Promise.all([
-        api.get(`/api/sectores/${sectorId}/dashboard`),
-        api.get(`/api/locales/${localId}/usuarios`).catch(() => ({ data: { items: [] } })),
-      ]);
+      const sectorRes = await api.get(`/api/sectores/${sectorId}/dashboard`);
       setData(sectorRes.data);
-      setLocalUsuarios(localUsersRes.data.items.map((u: any) => ({
-        id: u.usuarioId, nombre: u.nombre, apellido: u.apellido,
-      })));
+      if (sectorRes.data.currentUserLocalRole === 'ADMIN') {
+        const localUsersRes = await api.get(`/api/locales/${localId}/usuarios`).catch(() => ({ data: { items: [] } }));
+        setLocalUsuarios(localUsersRes.data.items.map((u: any) => ({
+          id: u.usuarioId, nombre: u.nombre, apellido: u.apellido,
+        })));
+      }
     } catch {
       setError('Error al cargar los datos del sector');
     } finally {
@@ -80,8 +81,9 @@ export default function SectorDetailPage() {
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
   async function handleEditSubmit(values: SectorFormValues) {
+    console.log('[SectorDetail] Actualizar Sector', { sectorId, values });
     try { setSubmitting(true); await api.put(`/api/sectores/${sectorId}`, values); setEditDialogOpen(false); fetchDashboard(); }
-    catch { setError('Error al actualizar el sector'); } finally { setSubmitting(false); }
+    catch (err) { console.error('[SectorDetail] Update error', err); setError('Error al actualizar el sector'); } finally { setSubmitting(false); }
   }
 
   async function handleDelete() {
@@ -138,6 +140,13 @@ export default function SectorDetailPage() {
 
       {error && <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
+      {unidades.some(u => !u.posicion) && (
+        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+          <MapPinOff className="size-4 shrink-0" />
+          <span>{unidades.filter(u => !u.posicion).length} unidad(es) sin posicion en el mapa. Editalas para asignarles una ubicacion dentro del sector.</span>
+        </div>
+      )}
+
       <StatsGrid className="lg:grid-cols-1 max-w-xs">
         <StatsCard icon={Box} label="Unidades de Produccion" value={stats.totalUnidades} />
       </StatsGrid>
@@ -177,7 +186,12 @@ export default function SectorDetailPage() {
         </div>
         <DataTable
           columns={[
-            { id: 'nombre', header: 'Nombre', accessorKey: 'nombre', sortable: true },
+            { id: 'nombre', header: 'Nombre', accessorFn: (row) => (
+              <span className="flex items-center gap-2">
+                {row.nombre}
+                {!row.posicion && <Badge variant="outline" className="text-amber-600 border-amber-400 gap-1"><MapPinOff className="size-3" />Sin ubicacion</Badge>}
+              </span>
+            ), sortable: true },
             { id: 'dispositivoCodigo', header: 'Dispositivo', accessorFn: (row) => row.dispositivoCodigo ?? '-' },
             { id: 'ultimaLectura', header: 'Ultima Lectura', accessorFn: (row) => row.ultimaLectura ? new Date(row.ultimaLectura).toLocaleString('es-EC') : 'Sin lecturas' },
           ] as ColumnDef<(typeof unidades)[0]>[]}

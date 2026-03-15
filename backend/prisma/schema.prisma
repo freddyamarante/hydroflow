@@ -124,7 +124,7 @@ model LocalProductivo {
   nombre                String
   tipoProductivo        String?
   empresaId             String
-  bounds                Json?
+  bounds                Json
   areaProduccion        String?
   direccion             String?
   ubicacionDomiciliaria String?

@@ -29,7 +29,9 @@ const sectorSchema = z.object({
   areaId: z.string().min(1, 'El area es requerida'),
   tipo: z.string().optional(),
   usuarioResponsableId: z.string().optional().transform(v => (!v || v === '__none__') ? undefined : v),
-  bounds: z.any().optional(),
+  bounds: z.any().refine((v) => v && v.type === 'Polygon' && v.coordinates?.length > 0, {
+    message: 'Debes dibujar los limites del sector en el mapa',
+  }),
 });
 
 export type SectorFormValues = z.infer<typeof sectorSchema>;

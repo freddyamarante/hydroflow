@@ -4,13 +4,15 @@ import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { requireAdmin } from '../lib/rbac.js';
 import { getUserLocalIds, requireWriteAccess, computeUserLocalRole } from '../lib/access.js';
-import { clipBounds } from '../lib/geo.js';
+import { clipBounds, isPointInsideBounds } from '../lib/geo.js';
 
 const createLocalSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   tipoProductivo: z.string().optional(),
   empresaId: z.string().min(1, 'Empresa ID is required'),
-  bounds: z.any().optional(),
+  bounds: z.any().refine((v) => v && v.type === 'Polygon' && v.coordinates?.length > 0, {
+    message: 'Bounds (map location) is required',
+  }),
   areaProduccion: z.string().optional(),
   direccion: z.string().optional(),
   ubicacionDomiciliaria: z.string().optional(),
@@ -216,7 +218,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
               id: true, nombre: true, bounds: true,
               unidadesProduccion: {
                 where: { posicion: { not: Prisma.DbNull } },
-                select: { id: true, nombre: true },
+                select: { id: true, nombre: true, posicion: true },
               },
             },
           },
@@ -253,6 +255,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
       const sectorUpdates: { id: string; bounds: GeoJSON.Polygon }[] = [];
       const sectorNullIds: string[] = [];
       const unidadesNulled: { id: string; nombre: string }[] = [];
+      const unidadNullIds: string[] = [];
 
       for (const area of areas) {
         const effectiveBounds = areaNewBounds.get(area.id);
@@ -262,7 +265,10 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
             // Area is fully outside → all its sectors are outside too
             sectoresOutside.push({ id: sector.id, nombre: sector.nombre });
             sectorNullIds.push(sector.id);
-            for (const u of sector.unidadesProduccion) unidadesNulled.push({ id: u.id, nombre: u.nombre });
+            for (const u of sector.unidadesProduccion) {
+              unidadesNulled.push({ id: u.id, nombre: u.nombre });
+              unidadNullIds.push(u.id);
+            }
             continue;
           }
 
@@ -271,12 +277,21 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
           if (result.status === 'clipped') {
             sectoresClipped.push({ id: sector.id, nombre: sector.nombre });
             sectorUpdates.push({ id: sector.id, bounds: result.bounds });
-            // Clipped sector → its unidades lose position
-            for (const u of sector.unidadesProduccion) unidadesNulled.push({ id: u.id, nombre: u.nombre });
+            // Only null unidades actually outside the new clipped sector bounds
+            for (const u of sector.unidadesProduccion) {
+              const pos = u.posicion as { lat: number; lng: number };
+              if (!isPointInsideBounds(pos, result.bounds)) {
+                unidadesNulled.push({ id: u.id, nombre: u.nombre });
+                unidadNullIds.push(u.id);
+              }
+            }
           } else {
             sectoresOutside.push({ id: sector.id, nombre: sector.nombre });
             sectorNullIds.push(sector.id);
-            for (const u of sector.unidadesProduccion) unidadesNulled.push({ id: u.id, nombre: u.nombre });
+            for (const u of sector.unidadesProduccion) {
+              unidadesNulled.push({ id: u.id, nombre: u.nombre });
+              unidadNullIds.push(u.id);
+            }
           }
         }
       }
@@ -314,10 +329,9 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
         txOps.push(prisma.sector.updateMany({ where: { id: { in: sectorNullIds } }, data: { bounds: Prisma.DbNull } }));
       }
 
-      const affectedSectorIds = [...sectorUpdates.map((s) => s.id), ...sectorNullIds];
-      if (affectedSectorIds.length > 0) {
+      if (unidadNullIds.length > 0) {
         txOps.push(prisma.unidadProduccion.updateMany({
-          where: { sectorId: { in: affectedSectorIds }, posicion: { not: Prisma.DbNull } },
+          where: { id: { in: unidadNullIds } },
           data: { posicion: Prisma.DbNull },
         }));
       }

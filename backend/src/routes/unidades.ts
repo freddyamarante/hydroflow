@@ -16,7 +16,9 @@ async function deriveTopicMqtt(dispositivoId: string): Promise<string> {
 const createUnidadSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   sectorId: z.string().min(1, 'Sector ID is required'),
-  posicion: z.any().optional(),
+  posicion: z.any().refine((v) => v && typeof v.lat === 'number' && typeof v.lng === 'number', {
+    message: 'Position (map location) is required',
+  }),
   detalles: z.any().optional(),
   tipoModuloId: z.string().optional(),
   topicMqtt: z.string().optional(),

@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { Layers, Box, Pencil, Trash2, Plus, Eye } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Layers, Box, Pencil, Trash2, Plus, Eye, MapPinOff } from 'lucide-react';
 import { DashboardMapCard, PolygonOverlayLayers } from '@/components/maps/dashboard-map';
 
 interface AreaDashboard {
@@ -46,19 +47,26 @@ export default function AreaDetailPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sectorDialogOpen, setSectorDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [clippingDialogOpen, setClippingDialogOpen] = useState(false);
+  const [clippingData, setClippingData] = useState<{
+    sectoresClipped: { id: string; nombre: string }[];
+    sectoresOutside: { id: string; nombre: string }[];
+    unidadesNulled: { id: string; nombre: string }[];
+  } | null>(null);
+  const [pendingEditValues, setPendingEditValues] = useState<AreaFormValues | null>(null);
   const [localUsuarios, setLocalUsuarios] = useState<{ id: string; nombre: string; apellido?: string | null }[]>([]);
 
   const fetchDashboard = useCallback(async () => {
     try {
       setLoading(true);
-      const [areaRes, localUsersRes] = await Promise.all([
-        api.get(`/api/areas/${areaId}/dashboard`),
-        api.get(`/api/locales/${localId}/usuarios`).catch(() => ({ data: { items: [] } })),
-      ]);
+      const areaRes = await api.get(`/api/areas/${areaId}/dashboard`);
       setData(areaRes.data);
-      setLocalUsuarios(localUsersRes.data.items.map((u: any) => ({
-        id: u.usuarioId, nombre: u.nombre, apellido: u.apellido,
-      })));
+      if (areaRes.data.currentUserLocalRole === 'ADMIN') {
+        const localUsersRes = await api.get(`/api/locales/${localId}/usuarios`).catch(() => ({ data: { items: [] } }));
+        setLocalUsuarios(localUsersRes.data.items.map((u: any) => ({
+          id: u.usuarioId, nombre: u.nombre, apellido: u.apellido,
+        })));
+      }
     } catch {
       setError('Error al cargar los datos del area');
     } finally {
@@ -69,8 +77,35 @@ export default function AreaDetailPage() {
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
   async function handleEditSubmit(values: AreaFormValues) {
-    try { setSubmitting(true); await api.put(`/api/areas/${areaId}`, values); setEditDialogOpen(false); fetchDashboard(); }
-    catch { setError('Error al actualizar el area'); } finally { setSubmitting(false); }
+    console.log('[AreaDetail] Actualizar Area', { areaId, values });
+    try {
+      setSubmitting(true);
+
+      const preview = await api.put(`/api/areas/${areaId}?dryRun=true`, values);
+      if (preview.data._clipping) {
+        setClippingData(preview.data._clipping);
+        setPendingEditValues(values);
+        setClippingDialogOpen(true);
+        return;
+      }
+
+      await api.put(`/api/areas/${areaId}`, values);
+      setEditDialogOpen(false);
+      fetchDashboard();
+    } catch { setError('Error al actualizar el area'); } finally { setSubmitting(false); }
+  }
+
+  async function handleConfirmClipping() {
+    if (!pendingEditValues) return;
+    try {
+      setSubmitting(true);
+      await api.put(`/api/areas/${areaId}`, pendingEditValues);
+      setClippingDialogOpen(false);
+      setEditDialogOpen(false);
+      setClippingData(null);
+      setPendingEditValues(null);
+      fetchDashboard();
+    } catch { setError('Error al actualizar el area'); } finally { setSubmitting(false); }
   }
 
   async function handleDelete() {
@@ -94,7 +129,12 @@ export default function AreaDetailPage() {
   const localBounds = area.localProductivo.bounds as GeoJSON.Polygon | null;
 
   const sectorColumns: ColumnDef<(typeof sectores)[0]>[] = [
-    { id: 'nombre', header: 'Nombre', accessorKey: 'nombre', sortable: true },
+    { id: 'nombre', header: 'Nombre', accessorFn: (row) => (
+      <span className="flex items-center gap-2">
+        {row.nombre}
+        {!row.bounds && <Badge variant="outline" className="text-amber-600 border-amber-400 gap-1"><MapPinOff className="size-3" />Sin limites</Badge>}
+      </span>
+    ), sortable: true },
     { id: 'tipo', header: 'Tipo', accessorKey: 'tipo' },
     { id: 'responsable', header: 'Responsable', accessorFn: (row) => row.usuarioResponsable?.nombre ?? '-' },
     { id: 'unidadesCount', header: 'Unidades', accessorFn: (row) => row.unidadesCount, className: 'text-center' },
@@ -125,6 +165,13 @@ export default function AreaDetailPage() {
       </div>
 
       {error && <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+
+      {sectores.some(s => !s.bounds) && (
+        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+          <MapPinOff className="size-4 shrink-0" />
+          <span>{sectores.filter(s => !s.bounds).length} sector(es) sin limites en el mapa. Editalos para asignarles un poligono dentro del area.</span>
+        </div>
+      )}
 
       <StatsGrid className="lg:grid-cols-2">
         <StatsCard icon={Layers} label="Sectores" value={stats.totalSectores} />
@@ -170,6 +217,47 @@ export default function AreaDetailPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Nuevo Sector</DialogTitle><DialogDescription>Crea un nuevo sector en {area.nombre}.</DialogDescription></DialogHeader>
           <SectorForm areaId={areaId} usuarios={localUsuarios} onSubmit={handleCreateSector} loading={submitting} parentBounds={areaBounds} siblingSectors={sectores.filter(s => s.bounds).map(s => ({ id: s.id, nombre: s.nombre, bounds: s.bounds as GeoJSON.Polygon }))} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clippingDialogOpen} onOpenChange={(open) => { setClippingDialogOpen(open); if (!open) { setClippingData(null); setPendingEditValues(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Limites de sectores seran ajustados</DialogTitle>
+            <DialogDescription>Los nuevos limites del area afectaran los siguientes sectores. Las unidades de produccion dentro de los sectores afectados perderan su posicion en el mapa y deberan ser reubicadas.</DialogDescription>
+          </DialogHeader>
+          {clippingData && (
+            <div className="space-y-3 text-sm max-h-64 overflow-y-auto">
+              {clippingData.sectoresClipped.length > 0 && (
+                <div>
+                  <p className="font-medium">Sectores que seran recortados:</p>
+                  <ul className="list-disc list-inside text-muted-foreground">
+                    {clippingData.sectoresClipped.map((s) => <li key={s.id}>{s.nombre}</li>)}
+                  </ul>
+                </div>
+              )}
+              {clippingData.sectoresOutside.length > 0 && (
+                <div>
+                  <p className="font-medium">Sectores completamente fuera de los nuevos limites:</p>
+                  <ul className="list-disc list-inside text-muted-foreground">
+                    {clippingData.sectoresOutside.map((s) => <li key={s.id}>{s.nombre}</li>)}
+                  </ul>
+                </div>
+              )}
+              {clippingData.unidadesNulled.length > 0 && (
+                <div>
+                  <p className="font-medium">Unidades que perderan su posicion en el mapa:</p>
+                  <ul className="list-disc list-inside text-muted-foreground">
+                    {clippingData.unidadesNulled.map((u) => <li key={u.id}>{u.nombre}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setClippingDialogOpen(false); setClippingData(null); setPendingEditValues(null); }} disabled={submitting}>Cancelar</Button>
+            <Button onClick={handleConfirmClipping} disabled={submitting}>{submitting ? 'Guardando...' : 'Confirmar y guardar'}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

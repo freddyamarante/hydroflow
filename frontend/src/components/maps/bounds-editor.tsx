@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Map, MapControls, useMap } from '@/components/ui/map';
 import { Button } from '@/components/ui/button';
 import { Trash2, Satellite, MapIcon, LocateFixed } from 'lucide-react';
-import { pointInPolygon, polygonInsidePolygon, getPolygonBBox, findOverlappingSibling } from '@/lib/geo';
+import { getPolygonBBox, clampPointToRing, snapToSiblings } from '@/lib/geo';
 import type MapLibreGL from 'maplibre-gl';
 
 interface BoundsEditorProps {
@@ -306,12 +306,15 @@ function BoundsInteraction({
         const dy = e.point.y - mouseDownPos.y;
         if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) return;
       }
-      const point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      let point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
       if (parentBounds) {
-        const parentRing = parentBounds.coordinates[0] as [number, number][];
-        if (!pointInPolygon(point, parentRing)) {
-          onError('El punto debe estar dentro de los limites del local/area');
-          return;
+        point = clampPointToRing(point, parentBounds.coordinates[0] as [number, number][]);
+      }
+      if (siblingPolygons && siblingPolygons.length > 0) {
+        point = snapToSiblings(point, siblingPolygons, (lngLat) => map.project(lngLat as [number, number]));
+        // Re-clamp after snap in case snap pushed outside parent
+        if (parentBounds) {
+          point = clampPointToRing(point, parentBounds.coordinates[0] as [number, number][]);
         }
       }
       onClickMap(point);
@@ -319,6 +322,16 @@ function BoundsInteraction({
 
     const onMouseMove = (e: MapLibreGL.MapMouseEvent) => {
       if (closed) return;
+      let coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      if (parentBounds) {
+        coords = clampPointToRing(coords, parentBounds.coordinates[0] as [number, number][]);
+      }
+      if (siblingPolygons && siblingPolygons.length > 0) {
+        coords = snapToSiblings(coords, siblingPolygons, (lngLat) => map.project(lngLat as [number, number]));
+        if (parentBounds) {
+          coords = clampPointToRing(coords, parentBounds.coordinates[0] as [number, number][]);
+        }
+      }
       const source = map.getSource('cursor-point-source') as MapLibreGL.GeoJSONSource | undefined;
       if (source) {
         source.setData({
@@ -326,7 +339,7 @@ function BoundsInteraction({
           features: [{
             type: 'Feature',
             properties: {},
-            geometry: { type: 'Point', coordinates: [e.lngLat.lng, e.lngLat.lat] },
+            geometry: { type: 'Point', coordinates: coords },
           }],
         });
       }
@@ -350,7 +363,7 @@ function BoundsInteraction({
         if (source) source.setData({ type: 'FeatureCollection', features: [] });
       } catch { /* map may already be destroyed */ }
     };
-  }, [isLoaded, map, closed, onClickMap, parentBounds, onError]);
+  }, [isLoaded, map, closed, onClickMap, parentBounds, siblingPolygons, onError]);
 
   // Update polygon and vertex sources when vertices/closed change
   useEffect(() => {
@@ -569,22 +582,10 @@ export function BoundsEditor({ value, onChange, parentBounds, siblingPolygons, c
 
   const handleClose = useCallback(() => {
     if (vertices.length < 3) return;
-    if (parentBounds) {
-      const parentRing = parentBounds.coordinates[0] as [number, number][];
-      if (!polygonInsidePolygon(vertices, parentRing)) {
-        handleError('Todos los vertices deben estar dentro de los limites del local/area');
-        return;
-      }
-    }
-    if (siblingPolygons && siblingPolygons.length > 0) {
-      const overlapName = findOverlappingSibling(vertices, siblingPolygons);
-      if (overlapName) {
-        handleError(`El poligono se superpone con: ${overlapName}`);
-        return;
-      }
-    }
-    setClosed(true);
+    // Vertices are clamped to parent bounds and snapped to sibling edges on click.
+    // Shared edges with siblings are valid (snapping enables exact boundary sharing).
     const ring = [...vertices, vertices[0]];
+    setClosed(true);
     onChange({ type: 'Polygon', coordinates: [ring] });
   }, [vertices, onChange, parentBounds, siblingPolygons, handleError]);
 
