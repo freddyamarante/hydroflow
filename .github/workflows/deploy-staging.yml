@@ -50,7 +50,16 @@ jobs:
 
             # Build and deploy staging services
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
+            # up -d may report exit 137 from old containers being killed during recreation — ignore and verify
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d || true
+
+            # Verify all containers are running
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml ps --format '{{.Service}} {{.State}}' | while read svc state; do
+              if [ "$state" != "running" ]; then
+                echo "❌ Service $svc is $state, not running"
+                exit 1
+              fi
+            done
 
             # Push schema to DB and re-seed
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bunx prisma db push --accept-data-loss
