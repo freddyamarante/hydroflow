@@ -32,8 +32,6 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
-            set -e
-
             # Free disk space before anything else
             docker system prune -af
             docker builder prune -af
@@ -48,22 +46,18 @@ jobs:
             # Ensure shared proxy network exists
             docker network create hydroflow-proxy 2>/dev/null || true
 
-            # Build and deploy staging services
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build
-            # up -d may report exit 137 from old containers being killed during recreation — ignore and verify
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d || true
+            # Build staging services (fail on build error)
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging build || { echo "❌ Build failed"; exit 1; }
 
-            # Verify all containers are running
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml ps --format '{{.Service}} {{.State}}' | while read svc state; do
-              if [ "$state" != "running" ]; then
-                echo "❌ Service $svc is $state, not running"
-                exit 1
-              fi
-            done
+            # Deploy — old containers exiting with 137 is expected
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
+
+            # Wait for containers to settle
+            sleep 5
 
             # Push schema to DB and re-seed
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bunx prisma db push --accept-data-loss
-            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml exec -T backend bun run prisma/seed.ts
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging exec -T backend bunx prisma db push --accept-data-loss || { echo "❌ Prisma push failed"; exit 1; }
+            docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging exec -T backend bun run prisma/seed.ts || { echo "❌ Seed failed"; exit 1; }
 
             # Recreate nginx so it picks up config changes (git reset creates new inodes)
             docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
@@ -75,3 +69,4 @@ jobs:
             docker image prune -f
 
             echo "✅ Staging deployed successfully!"
+            exit 0

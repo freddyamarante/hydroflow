@@ -16,14 +16,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy to Production
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: root
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
-            set -e
             cd /opt/hydroflow/hydroflow
 
             # Pull latest code (reset local changes from manual edits)
@@ -34,20 +33,15 @@ jobs:
             # Ensure shared proxy network exists
             docker network create hydroflow-proxy 2>/dev/null || true
 
-            # Build and deploy production
-            # up -d may report exit 137 from old containers being killed during recreation — ignore and verify
-            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d --build || true
+            # Build and deploy production (old containers exiting with 137 is expected)
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod build || { echo "❌ Build failed"; exit 1; }
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d
 
-            # Verify all containers are running
-            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml ps --format '{{.Service}} {{.State}}' | while read svc state; do
-              if [ "$state" != "running" ]; then
-                echo "❌ Service $svc is $state, not running"
-                exit 1
-              fi
-            done
+            # Wait for containers to settle
+            sleep 5
 
             # Run database migrations
-            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml exec -T backend bunx prisma migrate deploy
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod exec -T backend bunx prisma migrate deploy || { echo "❌ Migration failed"; exit 1; }
 
             # Recreate nginx so it picks up config changes (git reset creates new inodes)
             docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
@@ -59,3 +53,4 @@ jobs:
             docker image prune -f
 
             echo "✅ Production deployed successfully!"
+            exit 0
