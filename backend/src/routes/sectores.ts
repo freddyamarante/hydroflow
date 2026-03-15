@@ -129,7 +129,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
               posicion: true,
               dispositivo: { select: { id: true, codigo: true } },
               lecturas: {
-                select: { timestamp: true },
+                select: { timestamp: true, valores: true },
                 orderBy: { timestamp: 'desc' },
                 take: 1,
               },
@@ -168,6 +168,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
           posicion: u.posicion,
           dispositivoCodigo: u.dispositivo?.codigo ?? null,
           ultimaLectura: u.lecturas[0]?.timestamp ?? null,
+          valores: (u.lecturas[0]?.valores as Record<string, number> | undefined) ?? null,
         })),
         siblingSectores,
         currentUserLocalRole,

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Map as MapComponent, MapControls, useMap } from '@/components/ui/map';
+import { Map as MapComponent, MapControls, useMap, MapMarker, MarkerContent, MarkerLabel, MarkerPopup } from '@/components/ui/map';
 import { Map as MapIcon, Satellite, LocateFixed } from 'lucide-react';
 import { getPolygonBBox } from '@/lib/geo';
 
@@ -90,7 +90,7 @@ export function DashboardMapCard({ title, bounds, children }: {
     <Card className="p-0 gap-0 overflow-hidden">
       <CardHeader className="p-4"><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent className="p-0">
-        <div className="relative h-[500px]">
+        <div className="relative h-[850px]">
           <div className="absolute top-2 left-2 z-10">
             <Button type="button" variant="secondary" size="icon" className="size-8 shadow-md" onClick={() => setRecenterTrigger((n) => n + 1)} title="Centrar">
               <LocateFixed className="size-4" />
@@ -247,16 +247,79 @@ export function PolygonOverlayLayers({ parentId, parentBounds, children: polygon
 }
 
 // ---------------------------------------------------------------------------
-// PointOverlayLayers — parent boundary + clickable point markers
+// ParentBoundaryLayer — dashed outline for a parent polygon (reusable)
+// ---------------------------------------------------------------------------
+
+function ParentBoundaryLayer({ parentId, parentBounds, isSatellite }: {
+  parentId: string;
+  parentBounds: GeoJSON.Polygon;
+  isSatellite: boolean;
+}) {
+  const { map, isLoaded } = useMap();
+
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+
+    const sourceId = `${parentId}-bounds-source`;
+    const fillId = `${parentId}-bounds-fill`;
+    const lineId = `${parentId}-bounds-line`;
+
+    function addLayers() {
+      if (!map!.getSource(sourceId)) {
+        map!.addSource(sourceId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: parentBounds } });
+      }
+      if (!map!.getLayer(fillId)) {
+        map!.addLayer({ id: fillId, type: 'fill', source: sourceId, paint: { 'fill-color': '#94a3b8', 'fill-opacity': 0.08 } });
+      }
+      if (!map!.getLayer(lineId)) {
+        map!.addLayer({ id: lineId, type: 'line', source: sourceId, paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [4, 3] } });
+      }
+    }
+
+    addLayers();
+    const onStyleLoad = () => addLayers();
+    map.on('style.load', onStyleLoad);
+
+    return () => {
+      try {
+        map.off('style.load', onStyleLoad);
+        if (map.getLayer(lineId)) map.removeLayer(lineId);
+        if (map.getLayer(fillId)) map.removeLayer(fillId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
+      } catch { /* map destroyed */ }
+    };
+  }, [isLoaded, map, parentBounds]);
+
+  // Satellite paint updates
+  useEffect(() => {
+    if (!isLoaded || !map) return;
+    const fillId = `${parentId}-bounds-fill`;
+    const lineId = `${parentId}-bounds-line`;
+    try {
+      if (map.getLayer(fillId)) map.setPaintProperty(fillId, 'fill-opacity', isSatellite ? 0.2 : 0.08);
+      if (map.getLayer(lineId)) {
+        map.setPaintProperty(lineId, 'line-color', isSatellite ? '#ffffff' : '#94a3b8');
+        map.setPaintProperty(lineId, 'line-width', isSatellite ? 3 : 2);
+      }
+    } catch { /* layers may not exist yet */ }
+  }, [isLoaded, map, isSatellite]);
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// PointOverlayLayers — parent boundary + markers with labels and hover tooltips
 // ---------------------------------------------------------------------------
 
 interface PointChild {
   id: string;
   nombre: string;
   posicion: unknown;
+  topicMqtt?: string;
+  dispositivoCodigo?: string | null;
+  ultimaLectura?: string | null;
+  valores?: Record<string, number> | null;
 }
-
-const POINT_COLOR = '#3b82f6';
 
 export function PointOverlayLayers({ parentId, parentBounds, children: points, isSatellite, onPointClick }: {
   parentId: string;
@@ -265,99 +328,57 @@ export function PointOverlayLayers({ parentId, parentBounds, children: points, i
   isSatellite: boolean;
   onPointClick?: (id: string) => void;
 }) {
-  const { map, isLoaded } = useMap();
   const pointsWithPos = points.filter((p) => p.posicion);
 
-  useEffect(() => {
-    if (!isLoaded || !map) return;
-
-    const boundsSourceId = `${parentId}-bounds-source`;
-    const boundsFillId = `${parentId}-bounds-fill`;
-    const boundsLineId = `${parentId}-bounds-line`;
-    const pointsSourceId = `${parentId}-points-source`;
-    const circlesId = `${parentId}-points-circles`;
-    const labelsId = `${parentId}-points-labels`;
-
-    function addLayers() {
-      // Parent boundary
-      if (!map!.getSource(boundsSourceId)) {
-        map!.addSource(boundsSourceId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: parentBounds } });
-      }
-      if (!map!.getLayer(boundsFillId)) {
-        map!.addLayer({ id: boundsFillId, type: 'fill', source: boundsSourceId, paint: { 'fill-color': '#94a3b8', 'fill-opacity': 0.08 } });
-      }
-      if (!map!.getLayer(boundsLineId)) {
-        map!.addLayer({ id: boundsLineId, type: 'line', source: boundsSourceId, paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [4, 3] } });
-      }
-
-      // Point markers
-      if (!map!.getSource(pointsSourceId)) {
-        const features = pointsWithPos.map((p) => {
-          const pos = p.posicion as { lat: number; lng: number };
-          return { type: 'Feature' as const, properties: { id: p.id, nombre: p.nombre }, geometry: { type: 'Point' as const, coordinates: [pos.lng, pos.lat] } };
-        });
-        map!.addSource(pointsSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-      }
-      if (!map!.getLayer(circlesId)) {
-        map!.addLayer({ id: circlesId, type: 'circle', source: pointsSourceId, paint: { 'circle-radius': 7, 'circle-color': POINT_COLOR, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
-      }
-      if (!map!.getLayer(labelsId)) {
-        map!.addLayer({ id: labelsId, type: 'symbol', source: pointsSourceId, layout: { 'text-field': ['get', 'nombre'], 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 1], 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'] }, paint: { 'text-color': POINT_COLOR, 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } });
-      }
-    }
-
-    addLayers();
-
-    const clickHandler = (e: any) => { const id = e.features?.[0]?.properties?.id; if (id) onPointClick?.(id); };
-    const enterHandler = () => { map.getCanvas().style.cursor = 'pointer'; };
-    const leaveHandler = () => { map.getCanvas().style.cursor = ''; };
-
-    if (map.getLayer(circlesId)) {
-      map.on('click', circlesId, clickHandler);
-      map.on('mouseenter', circlesId, enterHandler);
-      map.on('mouseleave', circlesId, leaveHandler);
-    }
-
-    const onStyleLoad = () => addLayers();
-    map.on('style.load', onStyleLoad);
-
-    return () => {
-      try {
-        map.off('style.load', onStyleLoad);
-        if (map.getLayer(circlesId)) {
-          map.off('click', circlesId, clickHandler);
-          map.off('mouseenter', circlesId, enterHandler);
-          map.off('mouseleave', circlesId, leaveHandler);
-        }
-        [labelsId, circlesId].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
-        if (map.getSource(pointsSourceId)) map.removeSource(pointsSourceId);
-        if (map.getLayer(boundsLineId)) map.removeLayer(boundsLineId);
-        if (map.getLayer(boundsFillId)) map.removeLayer(boundsFillId);
-        if (map.getSource(boundsSourceId)) map.removeSource(boundsSourceId);
-      } catch { /* map destroyed */ }
-    };
-  }, [isLoaded, map, parentBounds, pointsWithPos.length]);
-
-  // Satellite paint updates
-  useEffect(() => {
-    if (!isLoaded || !map) return;
-    const boundsFillId = `${parentId}-bounds-fill`;
-    const boundsLineId = `${parentId}-bounds-line`;
-    const circlesId = `${parentId}-points-circles`;
-    const labelsId = `${parentId}-points-labels`;
-    try {
-      if (map.getLayer(boundsFillId)) map.setPaintProperty(boundsFillId, 'fill-opacity', isSatellite ? 0.2 : 0.08);
-      if (map.getLayer(boundsLineId)) {
-        map.setPaintProperty(boundsLineId, 'line-color', isSatellite ? '#ffffff' : '#94a3b8');
-        map.setPaintProperty(boundsLineId, 'line-width', isSatellite ? 3 : 2);
-      }
-      if (map.getLayer(circlesId)) map.setPaintProperty(circlesId, 'circle-stroke-color', isSatellite ? '#000000' : '#ffffff');
-      if (map.getLayer(labelsId)) {
-        map.setPaintProperty(labelsId, 'text-halo-color', isSatellite ? '#000000' : '#ffffff');
-        map.setPaintProperty(labelsId, 'text-halo-width', isSatellite ? 2 : 1.5);
-      }
-    } catch { /* layers may not exist yet */ }
-  }, [isLoaded, map, isSatellite]);
-
-  return null;
+  return (
+    <>
+      <ParentBoundaryLayer parentId={parentId} parentBounds={parentBounds} isSatellite={isSatellite} />
+      {pointsWithPos.map((point) => {
+        const pos = point.posicion as { lat: number; lng: number };
+        return (
+          <MapMarker key={point.id} longitude={pos.lng} latitude={pos.lat}>
+            <MarkerContent>
+              <div className="size-3.5 rounded-full border-2 border-white bg-blue-500 shadow-lg cursor-pointer" />
+              <MarkerLabel className={isSatellite ? 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : ''}>
+                {point.nombre}
+              </MarkerLabel>
+            </MarkerContent>
+            <MarkerPopup closeButton>
+              <div className="space-y-2 min-w-[180px]">
+                <p className="font-semibold text-sm">{point.nombre}</p>
+                {point.valores ? (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    {point.valores.velocidad != null && (
+                      <><span className="text-muted-foreground">Velocidad</span><span className="font-medium text-right">{point.valores.velocidad} m/s</span></>
+                    )}
+                    {point.valores.nivel != null && (
+                      <><span className="text-muted-foreground">Nivel</span><span className="font-medium text-right">{point.valores.nivel} m</span></>
+                    )}
+                    {point.valores.flujo_instantaneo != null && (
+                      <><span className="text-muted-foreground">Flujo</span><span className="font-medium text-right">{point.valores.flujo_instantaneo} m³/s</span></>
+                    )}
+                    {point.valores.bomba_encendida != null && (
+                      <><span className="text-muted-foreground">Bomba</span><span className={`font-medium text-right ${point.valores.bomba_encendida ? 'text-green-500' : 'text-red-500'}`}>{point.valores.bomba_encendida ? 'Encendida' : 'Apagada'}</span></>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-xs">Sin lecturas</p>
+                )}
+                {point.ultimaLectura && (
+                  <p className="text-muted-foreground text-[10px]">{new Date(point.ultimaLectura).toLocaleString('es-EC')}</p>
+                )}
+                <button
+                  type="button"
+                  className="w-full rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                  onClick={() => onPointClick?.(point.id)}
+                >
+                  Ver detalles
+                </button>
+              </div>
+            </MarkerPopup>
+          </MapMarker>
+        );
+      })}
+    </>
+  );
 }

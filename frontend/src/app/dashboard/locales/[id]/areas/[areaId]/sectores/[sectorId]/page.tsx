@@ -34,6 +34,7 @@ interface SectorDashboard {
     id: string; nombre: string; topicMqtt: string;
     posicion: unknown; dispositivoCodigo: string | null;
     ultimaLectura: string | null;
+    valores: Record<string, number> | null;
   }[];
   siblingSectores: { id: string; nombre: string; bounds: unknown }[];
 }
