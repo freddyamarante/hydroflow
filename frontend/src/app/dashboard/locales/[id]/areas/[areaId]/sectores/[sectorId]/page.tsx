@@ -58,6 +58,11 @@ export default function SectorDetailPage() {
   const [deleteUnidadDialogOpen, setDeleteUnidadDialogOpen] = useState(false);
   const [selectedUnidad, setSelectedUnidad] = useState<SectorDashboard['unidades'][0] | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [clippingDialogOpen, setClippingDialogOpen] = useState(false);
+  const [clippingData, setClippingData] = useState<{
+    unidadesNulled: { id: string; nombre: string }[];
+  } | null>(null);
+  const [pendingEditValues, setPendingEditValues] = useState<SectorFormValues | null>(null);
   const [localUsuarios, setLocalUsuarios] = useState<{ id: string; nombre: string; apellido?: string | null }[]>([]);
 
   const fetchDashboard = useCallback(async () => {
@@ -81,9 +86,32 @@ export default function SectorDetailPage() {
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
   async function handleEditSubmit(values: SectorFormValues) {
-    console.log('[SectorDetail] Actualizar Sector', { sectorId, values });
-    try { setSubmitting(true); await api.put(`/api/sectores/${sectorId}`, values); setEditDialogOpen(false); fetchDashboard(); }
-    catch (err) { console.error('[SectorDetail] Update error', err); setError('Error al actualizar el sector'); } finally { setSubmitting(false); }
+    try {
+      setSubmitting(true);
+      const preview = await api.put(`/api/sectores/${sectorId}?dryRun=true`, values);
+      if (preview.data._clipping) {
+        setClippingData(preview.data._clipping);
+        setPendingEditValues(values);
+        setClippingDialogOpen(true);
+        return;
+      }
+      await api.put(`/api/sectores/${sectorId}`, values);
+      setEditDialogOpen(false);
+      fetchDashboard();
+    } catch { setError('Error al actualizar el sector'); } finally { setSubmitting(false); }
+  }
+
+  async function handleConfirmClipping() {
+    if (!pendingEditValues) return;
+    try {
+      setSubmitting(true);
+      await api.put(`/api/sectores/${sectorId}`, pendingEditValues);
+      setClippingDialogOpen(false);
+      setEditDialogOpen(false);
+      setClippingData(null);
+      setPendingEditValues(null);
+      fetchDashboard();
+    } catch { setError('Error al actualizar el sector'); } finally { setSubmitting(false); }
   }
 
   async function handleDelete() {
@@ -246,6 +274,31 @@ export default function SectorDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteUnidadDialogOpen(false)} disabled={submitting}>Cancelar</Button>
             <Button variant="destructive" onClick={handleDeleteUnidad} disabled={submitting}>{submitting ? 'Eliminando...' : 'Eliminar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clippingDialogOpen} onOpenChange={(open) => { setClippingDialogOpen(open); if (!open) { setClippingData(null); setPendingEditValues(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unidades seran afectadas</DialogTitle>
+            <DialogDescription>Los nuevos limites del sector dejaran algunas unidades de produccion fuera del area. Estas unidades perderan su posicion en el mapa y deberan ser reubicadas.</DialogDescription>
+          </DialogHeader>
+          {clippingData && (
+            <div className="space-y-3 text-sm max-h-64 overflow-y-auto">
+              {clippingData.unidadesNulled.length > 0 && (
+                <div>
+                  <p className="font-medium">Unidades que perderan su posicion en el mapa:</p>
+                  <ul className="list-disc list-inside text-muted-foreground">
+                    {clippingData.unidadesNulled.map((u) => <li key={u.id}>{u.nombre}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setClippingDialogOpen(false); setClippingData(null); setPendingEditValues(null); }} disabled={submitting}>Cancelar</Button>
+            <Button onClick={handleConfirmClipping} disabled={submitting}>{submitting ? 'Guardando...' : 'Confirmar y guardar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
