@@ -52,8 +52,18 @@ jobs:
             # Deploy — old containers exiting with 137 is expected
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging up -d
 
-            # Wait for containers to settle
-            sleep 5
+            # Wait for backend container to be running (it may restart a few times)
+            echo "Waiting for backend container to be running..."
+            for i in $(seq 1 30); do
+              STATE=$(docker inspect --format '{{.State.Status}}' hydroflow-api-staging 2>/dev/null || echo "missing")
+              if [ "$STATE" = "running" ]; then
+                echo "Backend container is running (attempt $i)"
+                sleep 2
+                break
+              fi
+              echo "  Attempt $i: backend is $STATE, waiting..."
+              sleep 3
+            done
 
             # Push schema to DB and re-seed
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging exec -T backend bunx prisma db push --accept-data-loss || { echo "❌ Prisma push failed"; exit 1; }
