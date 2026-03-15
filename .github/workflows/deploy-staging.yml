@@ -65,6 +65,14 @@ jobs:
               sleep 3
             done
 
+            # If backend is still not running, dump logs and fail
+            STATE=$(docker inspect --format '{{.State.Status}}' hydroflow-api-staging 2>/dev/null || echo "missing")
+            if [ "$STATE" != "running" ]; then
+              echo "❌ Backend container is $STATE — dumping logs:"
+              docker logs --tail 50 hydroflow-api-staging 2>&1
+              exit 1
+            fi
+
             # Push schema to DB and re-seed
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging exec -T backend bunx prisma db push --accept-data-loss || { echo "❌ Prisma push failed"; exit 1; }
             docker compose -p hydroflow-staging -f docker/docker-compose.staging.yml --env-file /opt/hydroflow/.env.staging exec -T backend bun run prisma/seed.ts || { echo "❌ Seed failed"; exit 1; }
