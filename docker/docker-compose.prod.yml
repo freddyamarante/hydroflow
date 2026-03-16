@@ -33,6 +33,10 @@ services:
     networks:
       - hydroflow-prod
 
+  # MQTT broker with authentication enabled.
+  # Generate the password file on the server before first deploy:
+  #   docker exec -it hydroflow-mqtt-prod mosquitto_passwd -c /mosquitto/config/passwd <username>
+  # Then restart the broker: docker compose restart mosquitto
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: hydroflow-mqtt-prod
@@ -41,7 +45,7 @@ services:
       - "1883:1883"
       - "9001:9001"
     volumes:
-      - ../mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../mosquitto/config/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
     networks:
@@ -58,6 +62,8 @@ services:
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow
       REDIS_URL: redis://redis:6379
       MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
       HOST: 0.0.0.0

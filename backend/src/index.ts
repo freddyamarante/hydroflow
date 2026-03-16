@@ -21,6 +21,7 @@ import adminRoutes from './routes/admin.js';
 import meRoutes from './routes/me.js';
 import { connectMqtt, disconnectMqtt, getMqttClient } from './services/mqtt.js';
 import { initReadingsHandler } from './services/readings.js';
+import { initRuleEngine } from './services/rule-engine.js';
 
 // Initialize Fastify
 const fastify = Fastify({
@@ -103,7 +104,6 @@ fastify.get('/', async () => {
       health: '/health',
       auth: {
         login: 'POST /auth/login',
-        register: 'POST /auth/register',
         logout: 'POST /auth/logout',
         me: 'GET /auth/me',
         refresh: 'POST /auth/refresh',
@@ -119,6 +119,10 @@ fastify.get('/', async () => {
         dispositivos: '/api/dispositivos',
         tiposDispositivo: '/api/tipos-dispositivo',
         lecturas: '/api/lecturas',
+        reglas: '/api/reglas',
+        alertas: '/api/alertas',
+        equipos: '/api/equipos',
+        admin: '/api/admin',
         ws: '/api/ws/lecturas/:unidadId',
       },
     },
@@ -149,6 +153,9 @@ const start = async () => {
 
     fastify.log.info(`HydroFlow Backend running on ${config.HOST}:${config.PORT}`);
     fastify.log.info(`Environment: ${config.NODE_ENV}`);
+
+    // Initialize rule engine (load active rules into cache)
+    await initRuleEngine();
 
     // Connect MQTT (non-blocking, reconnects automatically)
     initReadingsHandler();

@@ -3,6 +3,7 @@ import { Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { getUserLocalIds, requireWriteAccess, getLocalIdForUnidad } from '../lib/access.js';
+import { reloadRulesForUnit } from '../services/rule-engine.js';
 
 const createReglaSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
@@ -117,6 +118,9 @@ const reglasRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const data = createReglaSchema.parse(request.body);
       const regla = await prisma.regla.create({ data });
+      reloadRulesForUnit(regla.unidadProduccionId).catch(err =>
+        fastify.log.error(err, '[Rule Engine] Failed to reload rules after create')
+      );
       return reply.code(201).send(regla);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -141,6 +145,9 @@ const reglasRoutes: FastifyPluginAsync = async (fastify) => {
       const { id } = request.params as { id: string };
       const data = updateReglaSchema.parse(request.body);
       const regla = await prisma.regla.update({ where: { id }, data });
+      reloadRulesForUnit(regla.unidadProduccionId).catch(err =>
+        fastify.log.error(err, '[Rule Engine] Failed to reload rules after update')
+      );
       return regla;
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -177,6 +184,10 @@ const reglasRoutes: FastifyPluginAsync = async (fastify) => {
         data: { activa: !existing.activa },
       });
 
+      reloadRulesForUnit(regla.unidadProduccionId).catch(err =>
+        fastify.log.error(err, '[Rule Engine] Failed to reload rules after toggle')
+      );
+
       return regla;
     } catch (error) {
       fastify.log.error(error);
@@ -193,7 +204,13 @@ const reglasRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const regla = await prisma.regla.findUnique({ where: { id }, select: { unidadProduccionId: true } });
       await prisma.regla.delete({ where: { id } });
+      if (regla) {
+        reloadRulesForUnit(regla.unidadProduccionId).catch(err =>
+          fastify.log.error(err, '[Rule Engine] Failed to reload rules after delete')
+        );
+      }
       return { message: 'Regla deleted successfully' };
     } catch (error) {
       if ((error as any).code === 'P2025') {

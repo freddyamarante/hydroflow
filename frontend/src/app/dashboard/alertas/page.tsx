@@ -5,6 +5,16 @@ import api from '@/lib/api';
 import { DataTable, ColumnDef, RowAction } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -38,6 +48,8 @@ export default function AlertasPage() {
   const [error, setError] = useState<string | null>(null);
   const [severidadFilter, setSeveridadFilter] = useState<string>('all');
   const [resueltaFilter, setResueltaFilter] = useState<string>('all');
+  const [alertaAResolver, setAlertaAResolver] = useState<Alerta | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   async function fetchData() {
     try {
@@ -59,13 +71,17 @@ export default function AlertasPage() {
     fetchData();
   }, [severidadFilter, resueltaFilter]);
 
-  async function handleResolve(alerta: Alerta) {
-    if (alerta.resuelta) return;
+  async function handleResolve() {
+    if (!alertaAResolver) return;
     try {
-      await api.patch(`/api/alertas/${alerta.id}/resolver`);
+      setSubmitting(true);
+      await api.patch(`/api/alertas/${alertaAResolver.id}/resolver`);
+      setAlertaAResolver(null);
       fetchData();
     } catch {
       setError('Error al resolver alerta');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -113,7 +129,7 @@ export default function AlertasPage() {
     {
       label: 'Resolver',
       icon: <CheckCircle className="size-4" />,
-      onClick: (alerta) => handleResolve(alerta),
+      onClick: (alerta) => setAlertaAResolver(alerta),
       hidden: (alerta) => alerta.resuelta,
     },
   ];
@@ -170,6 +186,23 @@ export default function AlertasPage() {
         emptyMessage="No hay alertas registradas."
         rowActions={rowActions}
       />
+
+      <AlertDialog open={!!alertaAResolver} onOpenChange={(open) => { if (!open) setAlertaAResolver(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Resolver esta alerta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion marcara la alerta como resuelta.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); handleResolve(); }} disabled={submitting}>
+              {submitting ? 'Resolviendo...' : 'Resolver'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { WebSocket } from 'ws';
 import prisma from '../lib/prisma.js';
 import { onMqttMessage } from './mqtt.js';
+import { evaluateRules } from './rule-engine.js';
 
 // Map of unidadId -> Set of WebSocket connections
 const wsConnections = new Map<string, Set<WebSocket>>();
@@ -133,6 +134,11 @@ export function initReadingsHandler(): void {
           timestamp: lectura.timestamp,
           valores,
         });
+
+        // Evaluate rules (fire-and-forget, don't block reading pipeline)
+        evaluateRules(unidad.id, valores as Record<string, unknown>).catch(err =>
+          console.error('[Rule Engine] Error evaluating rules:', err)
+        );
 
         processedCount++;
       }
