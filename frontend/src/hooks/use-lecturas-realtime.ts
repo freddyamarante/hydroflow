@@ -7,15 +7,28 @@ interface LecturasRealtimeResult {
   latest: any | null;
   history: any[];
   connected: boolean;
+  loading: boolean;
 }
 
-export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeResult {
+interface TimeRangeOptions {
+  mode: 'live' | 'historical';
+  desde?: Date;
+  hasta?: Date;
+  limit?: number;
+}
+
+export function useLecturasRealtime(
+  unidadId: string | null,
+  timeRange?: TimeRangeOptions,
+): LecturasRealtimeResult {
   const [latest, setLatest] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [connected, setConnected] = useState(false);
+  const [loading, setLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const isLive = !timeRange || timeRange.mode === 'live';
 
   const connect = useCallback(() => {
     if (!unidadId) return;
@@ -36,10 +49,13 @@ export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeRe
       try {
         const data = JSON.parse(event.data);
         setLatest(data);
-        setHistory((prev) => {
-          const updated = [...prev, data];
-          return updated.slice(-50);
-        });
+        // Only append to history in live mode
+        if (isLive) {
+          setHistory((prev) => {
+            const updated = [...prev, data];
+            return updated.slice(-50);
+          });
+        }
       } catch {
         // ignore malformed messages
       }
@@ -59,20 +75,32 @@ export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeRe
     ws.onerror = () => {
       ws.close();
     };
-  }, [unidadId]);
+  }, [unidadId, isLive]);
 
+  // Fetch historical data and manage WS connection
   useEffect(() => {
     if (!unidadId) return;
 
-    // Fetch historical data first, then connect WebSocket
+    const params = new URLSearchParams({ unidadProduccionId: unidadId });
+
+    if (timeRange?.mode === 'historical' && timeRange.desde && timeRange.hasta) {
+      params.set('desde', timeRange.desde.toISOString());
+      params.set('hasta', timeRange.hasta.toISOString());
+      params.set('limit', String(timeRange.limit ?? 500));
+    } else {
+      params.set('limit', '50');
+    }
+
+    setLoading(true);
+
     api
-      .get(`/api/lecturas?unidadProduccionId=${unidadId}&limit=50`)
+      .get(`/api/lecturas?${params.toString()}`)
       .then((res) => {
         const items = res.data.items as any[];
         // API returns DESC order, charts need ASC
         const reversed = [...items].reverse();
+        setHistory(reversed);
         if (reversed.length > 0) {
-          setHistory(reversed);
           setLatest(reversed[reversed.length - 1]);
         }
       })
@@ -80,8 +108,16 @@ export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeRe
         // silent fail — will still get live data
       })
       .finally(() => {
-        connect();
+        setLoading(false);
+        // Only connect WS on first mount (handled below)
       });
+  }, [unidadId, timeRange?.mode, timeRange?.desde?.getTime(), timeRange?.hasta?.getTime(), timeRange?.limit]);
+
+  // WS connection — always connect for live gauge updates
+  useEffect(() => {
+    if (!unidadId) return;
+
+    connect();
 
     return () => {
       if (reconnectTimeoutRef.current) {
@@ -93,5 +129,5 @@ export function useLecturasRealtime(unidadId: string | null): LecturasRealtimeRe
     };
   }, [connect, unidadId]);
 
-  return { latest, history, connected };
+  return { latest, history, connected, loading };
 }

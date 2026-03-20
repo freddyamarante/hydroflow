@@ -39,6 +39,12 @@ enum Severidad {
   CRITICA
 }
 
+enum TipoVariable {
+  SENSOR
+  FIJA
+  CALCULADA
+}
+
 // ============================================
 // AUTH & USERS
 // ============================================
@@ -177,24 +183,25 @@ model Sector {
 
 // Level 6: Production Unit
 model UnidadProduccion {
-  id             String   @id @default(cuid())
-  nombre         String
-  sectorId       String
-  posicion       Json?
-  detalles       Json?
-  tipoModuloId   String?
-  topicMqtt      String?
-  dispositivoId  String?
-  configuracion  Json?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  nombre                  String
+  sectorId                String
+  posicion                Json?
+  detalles                Json?
+  tipoUnidadProduccionId  String?  @map("tipo_unidad_produccion_id")
+  topicMqtt               String?
+  dispositivoId           String?
+  configuracion           Json?    // stores FIJA variable values keyed by variable codigo
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  sector      Sector       @relation(fields: [sectorId], references: [id], onDelete: Cascade)
-  dispositivo Dispositivo? @relation(fields: [dispositivoId], references: [id], onDelete: SetNull)
-  lecturas    Lectura[]
-  reglas      Regla[]
-  alertas     Alerta[]
-  equipos     Equipo[]
+  sector               Sector                @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  dispositivo          Dispositivo?          @relation(fields: [dispositivoId], references: [id], onDelete: SetNull)
+  tipoUnidadProduccion TipoUnidadProduccion? @relation(fields: [tipoUnidadProduccionId], references: [id], onDelete: SetNull)
+  lecturas             Lectura[]
+  reglas               Regla[]
+  alertas              Alerta[]
+  equipos              Equipo[]
 
   @@map("unidad_produccion")
 }
@@ -214,6 +221,60 @@ model Equipo {
   unidadProduccion UnidadProduccion @relation(fields: [unidadProduccionId], references: [id], onDelete: Cascade)
 
   @@map("equipo")
+}
+
+// ============================================
+// DYNAMIC VARIABLE SYSTEM
+// ============================================
+
+model TipoActividadProductiva {
+  id          String   @id @default(cuid())
+  nombre      String   @unique
+  codigo      String   @unique
+  descripcion String?
+  creadoEn    DateTime @default(now()) @map("creado_en")
+
+  tiposUnidadProduccion TipoUnidadProduccion[]
+
+  @@map("tipo_actividad_productiva")
+}
+
+model TipoUnidadProduccion {
+  id                        String   @id @default(cuid())
+  nombre                    String
+  codigo                    String   @unique
+  descripcion               String?
+  tipoActividadProductivaId String   @map("tipo_actividad_productiva_id")
+  creadoEn                  DateTime @default(now()) @map("creado_en")
+
+  tipoActividadProductiva TipoActividadProductiva @relation(fields: [tipoActividadProductivaId], references: [id], onDelete: Cascade)
+  variables               VariableDefinicion[]
+  unidadesProduccion      UnidadProduccion[]
+
+  @@map("tipo_unidad_produccion")
+}
+
+model VariableDefinicion {
+  id                     String       @id @default(cuid())
+  tipoUnidadProduccionId String       @map("tipo_unidad_produccion_id")
+  nombre                 String
+  codigo                 String
+  unidad                 String?
+  tipo                   TipoVariable
+  claveJson              String?      @map("clave_json")
+  formula                String?
+  valorPorDefecto        Float?       @map("valor_por_defecto")
+  orden                  Int          @default(0)
+  esVisibleEnDashboard   Boolean      @default(true)  @map("es_visible_en_dashboard")
+  esVisibleEnMapa        Boolean      @default(false) @map("es_visible_en_mapa")
+  iconoSugerido          String?      @map("icono_sugerido")
+  colorSugerido          String?      @map("color_sugerido")
+  creadoEn               DateTime     @default(now()) @map("creado_en")
+
+  tipoUnidadProduccion TipoUnidadProduccion @relation(fields: [tipoUnidadProduccionId], references: [id], onDelete: Cascade)
+
+  @@unique([tipoUnidadProduccionId, codigo])
+  @@map("variable_definicion")
 }
 
 // ============================================

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Map as MapComponent, MapControls, useMap, MapMarker, MarkerContent, MarkerLabel, MarkerPopup } from '@/components/ui/map';
@@ -10,6 +10,10 @@ import { getPolygonBBox } from '@/lib/geo';
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
+
+function formatVarName(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export const SATELLITE_STYLE = {
   version: 8 as const,
@@ -348,18 +352,20 @@ export function PointOverlayLayers({ parentId, parentBounds, children: points, i
                 <p className="font-semibold text-sm">{point.nombre}</p>
                 {point.valores ? (
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    {point.valores.velocidad != null && (
-                      <><span className="text-muted-foreground">Velocidad</span><span className="font-medium text-right">{point.valores.velocidad} m/s</span></>
-                    )}
-                    {point.valores.nivel != null && (
-                      <><span className="text-muted-foreground">Nivel</span><span className="font-medium text-right">{point.valores.nivel} m</span></>
-                    )}
-                    {point.valores.flujo_instantaneo != null && (
-                      <><span className="text-muted-foreground">Flujo</span><span className="font-medium text-right">{point.valores.flujo_instantaneo} m³/s</span></>
-                    )}
-                    {point.valores.bomba_encendida != null && (
-                      <><span className="text-muted-foreground">Bomba</span><span className={`font-medium text-right ${point.valores.bomba_encendida ? 'text-green-500' : 'text-red-500'}`}>{point.valores.bomba_encendida ? 'Encendida' : 'Apagada'}</span></>
-                    )}
+                    {Object.entries(point.valores)
+                      .filter(([_, v]) => v != null)
+                      .map(([key, value]) => (
+                        <Fragment key={key}>
+                          <span className="text-muted-foreground">{formatVarName(key)}</span>
+                          <span className="font-medium text-right">
+                            {typeof value === 'boolean'
+                              ? (value ? 'Si' : 'No')
+                              : typeof value === 'number'
+                                ? Math.round(value * 100) / 100
+                                : String(value)}
+                          </span>
+                        </Fragment>
+                      ))}
                   </div>
                 ) : (
                   <p className="text-muted-foreground text-xs">Sin lecturas</p>

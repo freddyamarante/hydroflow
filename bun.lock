@@ -5,9 +5,11 @@
     "": {
       "name": "hydroflow",
       "dependencies": {
+        "expr-eval": "^2.0.2",
         "prisma": "^7.5.0",
       },
       "devDependencies": {
+        "@types/expr-eval": "^1.1.2",
         "mqtt": "^5.15.0",
       },
     },
@@ -43,9 +45,11 @@
         "@hookform/resolvers": "^5.2.2",
         "@radix-ui/react-label": "^2.1.8",
         "@radix-ui/react-slot": "^1.2.4",
+        "@types/expr-eval": "^1.1.2",
         "axios": "^1.13.3",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
+        "expr-eval": "^2.0.2",
         "framer-motion": "^12.29.2",
         "lucide-react": "^0.574.0",
         "maplibre-gl": "^5.18.0",
@@ -553,6 +557,8 @@
 
     "@types/estree": ["@types/estree@1.0.8", "", {}, "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w=="],
 
+    "@types/expr-eval": ["@types/expr-eval@1.1.2", "", { "dependencies": { "expr-eval": "*" } }, "sha512-rX4yEyVMxN2uFwJ16uVcx8e10xJ70NftDLZYtyP9gaOnaZ8pJLyR9FLi7i2SwucAafC+KjTs8/ZyoMvLLu/9ng=="],
+
     "@types/geojson": ["@types/geojson@7946.0.16", "", {}, "sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg=="],
 
     "@types/json-schema": ["@types/json-schema@7.0.15", "", {}, "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA=="],
@@ -906,6 +912,8 @@
     "eventemitter3": ["eventemitter3@5.0.4", "", {}, "sha512-mlsTRyGaPBjPedk6Bvw+aqbsXDtoAyAzm5MO7JgU+yVRyMQ5O8bD4Kcci7BS85f93veegeCPkL8R4GLClnjLFw=="],
 
     "events": ["events@3.3.0", "", {}, "sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q=="],
+
+    "expr-eval": ["expr-eval@2.0.2", "", {}, "sha512-4EMSHGOPSwAfBiibw3ndnP0AvjDWLsMvGOvWEZ2F96IGk0bIVdjQisOHxReSkE13mHcfbuCiXw+G4y0zv6N8Eg=="],
 
     "exsolve": ["exsolve@1.0.8", "", {}, "sha512-LmDxfWXwcTArk8fUEnOfSZpHOJ6zOMUJKOtFLFqJLoKJetuQG874Uc7/Kki7zFLzYybmZhp1M7+98pfMqeX8yA=="],
 
