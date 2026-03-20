@@ -52,8 +52,9 @@ jobs:
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo build
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo up -d
 
-            # Run safe database migrations (no seeding)
+            # Run database migrations and seed
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml exec -T backend bunx prisma migrate deploy
+            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml exec -T backend bunx prisma db seed
 
             # Recreate nginx so it picks up config changes
             docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
