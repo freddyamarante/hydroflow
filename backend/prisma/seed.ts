@@ -43,9 +43,6 @@ async function main() {
 
   // Track IDs for user assignments
   let produmarId = ''
-  let acuacorpId = ''
-  const produmarLocalIds: string[] = []
-  const acuacorpLocalIds: string[] = []
 
   for (const grupo of HIERARCHY) {
     const grupoSlug = slugify(grupo.razonSocial)
@@ -63,7 +60,6 @@ async function main() {
       const empresaId = makeId('empresa', empresaSlug)
 
       if (empresa.marcaComercial === 'Produmar') produmarId = empresaId
-      if (empresa.marcaComercial === 'Acuacorp') acuacorpId = empresaId
 
       empresaRecords.push({
         id: empresaId,
@@ -76,9 +72,6 @@ async function main() {
 
       for (const local of empresa.locales) {
         const localId = makeId('local', local.slug)
-
-        if (empresa.marcaComercial === 'Produmar') produmarLocalIds.push(localId)
-        if (empresa.marcaComercial === 'Acuacorp') acuacorpLocalIds.push(localId)
 
         localRecords.push({
           id: localId,
@@ -200,87 +193,25 @@ async function main() {
   console.log('Created 2 tipos de dispositivo')
 
   // ------------------------------------------------------------------
-  // Users
+  // Admin user
   // ------------------------------------------------------------------
 
   const hashedPassword = await argon2.hash('admin123')
 
-  const adminId = 'seed-user-admin'
-  const supProdumarId = 'seed-user-sup-produmar'
-  const visorProdumarId = 'seed-user-visor-produmar'
-  const supAcuacorpId = 'seed-user-sup-acuacorp'
-
-  await prisma.usuario.createMany({
-    data: [
-      {
-        id: adminId,
-        nombre: 'Admin',
-        apellido: 'HydroFlow',
-        email: 'admin@hydro-flow.io',
-        contrasena: hashedPassword,
-        rol: 'ADMIN',
-        esAdminEmpresa: false,
-        empresaId: produmarId,
-      },
-      {
-        id: supProdumarId,
-        nombre: 'Carlos',
-        apellido: 'Mendoza',
-        email: 'supervisor@produmar.com',
-        contrasena: hashedPassword,
-        rol: 'USER',
-        empresaId: produmarId,
-        esAdminEmpresa: true,
-      },
-      {
-        id: visorProdumarId,
-        nombre: 'Maria',
-        apellido: 'Torres',
-        email: 'visor@produmar.com',
-        contrasena: hashedPassword,
-        rol: 'USER',
-        empresaId: produmarId,
-        esAdminEmpresa: false,
-      },
-      {
-        id: supAcuacorpId,
-        nombre: 'Jorge',
-        apellido: 'Ramirez',
-        email: 'supervisor@acuacorp.com',
-        contrasena: hashedPassword,
-        rol: 'USER',
-        empresaId: acuacorpId,
-        esAdminEmpresa: true,
-      },
-    ],
+  await prisma.usuario.create({
+    data: {
+      id: 'seed-user-admin',
+      nombre: 'Admin',
+      apellido: 'HydroFlow',
+      email: 'admin@hydro-flow.io',
+      contrasena: hashedPassword,
+      rol: 'ADMIN',
+      esAdminEmpresa: false,
+      empresaId: produmarId,
+    },
   })
 
-  console.log('Created 4 users')
-
-  // ------------------------------------------------------------------
-  // User ↔ Local permissions
-  // ------------------------------------------------------------------
-
-  await prisma.usuarioLocalProductivo.createMany({
-    data: [
-      // supervisor@produmar → all Produmar locales with SUPERVISOR role
-      ...produmarLocalIds.map((localProductivoId) => ({
-        usuarioId: supProdumarId,
-        localProductivoId,
-        rol: 'SUPERVISOR' as const,
-      })),
-      // visor@produmar → first Produmar local (Finca Delia) with VISOR role
-      { usuarioId: visorProdumarId, localProductivoId: produmarLocalIds[0], rol: 'VISOR' as const },
-      // supervisor@acuacorp → all Acuacorp locales with SUPERVISOR role
-      ...acuacorpLocalIds.map((localProductivoId) => ({
-        usuarioId: supAcuacorpId,
-        localProductivoId,
-        rol: 'SUPERVISOR' as const,
-      })),
-    ],
-  })
-
-  console.log('Created user-local permissions')
+  console.log('Created admin user')
   console.log('Seed completed successfully!')
 }
 
