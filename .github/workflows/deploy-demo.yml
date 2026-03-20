@@ -50,7 +50,7 @@ jobs:
 
             # Build and deploy demo services
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo build --no-cache
-            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo up -d
+            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo up -d --force-recreate
 
             # Run database migrations and seed
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml exec -T backend bunx prisma migrate deploy
