@@ -1,0 +1,67 @@
+# .github/workflows/deploy-demo.yml
+name: Deploy to Demo
+
+on:
+  push:
+    branches:
+      - demo
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Wait for server to be ready
+        run: |
+          for i in 1 2 3 4 5; do
+            nc -z -w 5 ${{ secrets.SERVER_HOST }} 22 && echo "SSH port open" && exit 0
+            echo "Attempt $i: SSH port not ready, waiting 30s..."
+            sleep 30
+          done
+          echo "SSH port not reachable after 5 attempts"
+          exit 1
+
+      - name: Deploy to Demo
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -e
+
+            # Free disk space before anything else
+            docker system prune -af
+            docker builder prune -af
+
+            cd /opt/hydroflow/hydroflow
+
+            # Pull latest code
+            git fetch origin demo
+            git checkout demo
+            git reset --hard origin/demo
+
+            # Ensure shared proxy network exists
+            docker network create hydroflow-proxy 2>/dev/null || true
+
+            # Build and deploy demo services
+            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo build
+            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo up -d
+
+            # Run safe database migrations (no seeding)
+            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml exec -T backend bunx prisma migrate deploy
+
+            # Recreate nginx so it picks up config changes
+            docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
+
+            # Reload nginx to re-resolve DNS for new container IPs
+            docker exec hydroflow-nginx nginx -s reload
+
+            # Cleanup
+            docker image prune -f
+
+            echo "✅ Demo deployed successfully!"
