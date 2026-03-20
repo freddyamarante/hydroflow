@@ -49,7 +49,7 @@ jobs:
             docker network create hydroflow-proxy 2>/dev/null || true
 
             # Build and deploy demo services
-            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo build
+            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo build --no-cache
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo up -d
 
             # Run database migrations and seed
