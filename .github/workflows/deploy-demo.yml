@@ -66,8 +66,8 @@ jobs:
             # Step 2: Push schema to DB BEFORE starting the backend
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo run --rm -T backend bunx prisma db push --accept-data-loss || { echo "Prisma push failed"; exit 1; }
 
-            # Step 3: Seed the database
-            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo run --rm -T backend bun run prisma/seed.ts || { echo "Seed failed"; exit 1; }
+            # Step 3: Seed the database (demo = admin user only)
+            docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo run --rm -T backend bun run prisma/seed-demo.ts || { echo "Seed failed"; exit 1; }
 
             # Step 4: Now start all services (backend will find tables ready)
             docker compose -p hydroflow-demo -f docker/docker-compose.demo.yml --env-file /opt/hydroflow/.env.demo up -d
