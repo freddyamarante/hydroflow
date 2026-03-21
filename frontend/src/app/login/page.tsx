@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
+import { Logo } from '@/components/landing/logo';
 
 
 export default function LoginPage() {
@@ -41,29 +42,14 @@ export default function LoginPage() {
       >
         <Card className="shadow-xl">
           <CardHeader className="space-y-1">
-            <div className="flex items-center justify-center mb-4">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-                className="w-16 h-16 bg-cyan-600 dark:bg-cyan-500 rounded-full flex items-center justify-center"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="white"
-                  className="w-8 h-8"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232 1.232 3.227 0 4.458l-.146.146a3 3 0 01-4.243 0l-1.4-1.4m-4.555-4.555l-1.4-1.4a3 3 0 010-4.242l.146-.146a3.153 3.153 0 014.458 0l1.402 1.402M5 14.5V18a2 2 0 002 2h2"
-                  />
-                </svg>
-              </motion.div>
-            </div>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
+              className="flex items-center justify-center mb-4"
+            >
+              <Logo className="w-48" variant="white" />
+            </motion.div>
             <CardTitle className="text-2xl text-center">Bienvenido a HydroFlow</CardTitle>
             <CardDescription className="text-center">
               Inicia sesión para acceder al sistema de monitoreo

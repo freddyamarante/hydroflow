@@ -3,15 +3,13 @@ import { DotGrid } from "./dot-grid";
 
 export function MobileApp() {
   return (
-    <section className="relative bg-[#F0F0EB] overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20 lg:py-24">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+    <section className="relative bg-[#F0F0EB]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:pl-10 pt-16 md:pt-20 lg:pt-24 pb-0">
+        <div className="flex flex-col lg:flex-row gap-0 items-end w-full">
           {/* Text content */}
-          <div>
-            <h2 className="font-[family-name:var(--font-barlow)] text-3xl md:text-5xl lg:text-7xl xl:text-[80px] text-[#303030] leading-[1.1]">
-              <span className="font-bold">Descarga</span> nuestra
-              <br />
-              aplicaci&oacute;n m&oacute;vil.
+          <div className="self-center pb-16 lg:pb-24 leading-none lg:basis-[60%]">
+            <h2 className="font-[family-name:var(--font-barlow)] text-3xl md:text-5xl lg:text-7xl xl:text-[80px] text-[#303030] leading-none">
+              <span className="font-bold">Descarga</span> nuestra aplicaci&oacute;n m&oacute;vil.
             </h2>
             <p className="font-[family-name:var(--font-barlow)] text-base md:text-lg lg:text-xl text-black mt-6 lg:mt-8 leading-relaxed max-w-lg">
               Accede desde tu tel&eacute;fono al estado de las estaciones de bombeo, caudal
@@ -44,7 +42,7 @@ export function MobileApp() {
               >
                 <div className="flex items-center gap-2">
                   <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current">
-                    <path d="M3.18 23.04c-.64-1.1-.3-3.7.88-7.37L7.5 12 4.06 8.33C2.88 4.66 2.54 2.06 3.18.96 3.82-.14 5.33-.3 7.72.96L12 3.54l4.28-2.58C18.67-.3 20.18-.14 20.82.96c.64 1.1.3 3.7-.88 7.37L16.5 12l3.44 3.67c1.18 3.67 1.52 6.27.88 7.37-.64 1.1-2.15 1.26-4.54 0L12 20.46l-4.28 2.58C5.33 24.3 3.82 24.14 3.18 23.04z" />
+                    <path d="M3.61 1.814L13.793 12 3.61 22.186a.996.996 0 01-.61-.92V2.734c0-.384.22-.72.61-.92zM14.855 13.062l2.31 2.31-10.49 5.96 8.18-8.27zm3.828-3.835l2.147 1.217a1.073 1.073 0 010 1.862l-2.37 1.344-2.54-2.562 2.763-1.861zM6.675 3.668l10.49 5.96-2.31 2.31-8.18-8.27z" />
                   </svg>
                   <div className="text-left">
                     <div className="text-[10px] leading-tight">ANDROID APP ON</div>
@@ -56,16 +54,14 @@ export function MobileApp() {
           </div>
 
           {/* Phone mockup */}
-          <div className="relative flex justify-center lg:justify-end">
-            <div className="relative w-[280px] md:w-[320px] lg:w-[400px]">
-              {/* Placeholder for phone mockup — replace with exported image */}
-              <div className="aspect-[9/16] bg-gradient-to-b from-[#018DC8]/20 to-[#080935]/20 rounded-[2rem] border-4 border-gray-300 shadow-2xl flex items-center justify-center">
-                <span className="text-gray-400 text-sm text-center px-4">
-                  Phone mockup<br />
-                  (replace with exported image)
-                </span>
-              </div>
-            </div>
+          <div className="relative flex justify-center lg:justify-end lg:-mr-1 lg:basis-[40%]">
+            <Image
+              src="/images/landing/phone-app.png"
+              alt="HydroFlow Mobile App"
+              width={577}
+              height={677}
+              className="w-[350px] md:w-[450px] lg:w-[620px] h-auto"
+            />
           </div>
         </div>
       </div>

@@ -1,10 +1,11 @@
+import Image from "next/image";
 import { DotGrid } from "./dot-grid";
 import { Download } from "lucide-react";
 
 export function Desktop() {
   return (
-    <section className="relative bg-white overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20 lg:py-24 text-center">
+    <section className="relative z-30 bg-white overflow-visible">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 md:pt-20 lg:pt-24 text-center">
         <h2 className="font-[family-name:var(--font-barlow)] text-3xl md:text-5xl lg:text-7xl xl:text-[80px] text-[#303030] leading-[1.1]">
           <span className="font-bold italic">Software</span> de escritorio
         </h2>
@@ -28,18 +29,19 @@ export function Desktop() {
         </div>
 
         {/* Dashboard screenshot */}
-        <div className="relative mt-10 lg:mt-14 mx-auto max-w-5xl">
-          <div className="aspect-[16/10] bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl border border-gray-200 shadow-2xl overflow-hidden flex items-center justify-center">
-            <span className="text-gray-400 text-sm text-center px-4">
-              Dashboard screenshot<br />
-              (replace with exported image)
-            </span>
-          </div>
+        <div className="relative mt-10 lg:mt-0 mx-auto max-w-5xl">
+          <Image
+            src="/images/landing/dashboard-screenshot.png"
+            alt="HydroFlow Desktop Dashboard"
+            width={1097}
+            height={655}
+            className="relative lg:top-24 w-full h-auto rounded-xl shadow-2xl border-3 border-gray-200"
+          />
         </div>
       </div>
 
       {/* Decorative elements */}
-      <div className="absolute -top-16 -left-16 w-[250px] h-[250px] lg:w-[350px] lg:h-[350px] rounded-full border-[20px] lg:border-[35px] border-[#080935]/5 hidden md:block" />
+      <div className="absolute -bottom-25 -left-20 w-[300px] h-[300px] lg:w-[450px] lg:h-[450px] rounded-full border-[25px] lg:border-[60px] border-[#018DC8]/5 hidden md:block pointer-events-none -z-10" />xz
       <DotGrid
         className="absolute top-1/3 left-4 hidden lg:block"
         rows={8}
