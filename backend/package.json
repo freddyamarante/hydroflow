@@ -33,6 +33,7 @@
     "@turf/intersect": "^7.3.4",
     "argon2": "^0.44.0",
     "dotenv": "^16.4.7",
+    "expr-eval": "^2.0.2",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.1.0",
     "mqtt": "^5.10.3",
