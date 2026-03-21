@@ -7,6 +7,10 @@ on:
       - staging
   workflow_dispatch:
 
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -33,10 +37,6 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           command_timeout: 20m
           script: |
-            # Free disk space before anything else
-            docker system prune -af
-            docker builder prune -af
-
             cd /opt/hydroflow/hydroflow
 
             # Pull latest code (reset local changes from manual edits)
@@ -102,8 +102,9 @@ jobs:
             # Reload nginx to re-resolve DNS for new container IPs
             docker exec hydroflow-nginx nginx -s reload
 
-            # Cleanup
+            # Cleanup: only remove dangling images and build cache, never running containers
             docker image prune -f
+            docker builder prune -f --filter "until=24h"
 
             echo "Staging deployed successfully!"
             exit 0

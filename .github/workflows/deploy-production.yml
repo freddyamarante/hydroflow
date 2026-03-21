@@ -7,6 +7,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -89,8 +93,9 @@ jobs:
             # Reload nginx to re-resolve DNS for new container IPs
             docker exec hydroflow-nginx nginx -s reload
 
-            # Cleanup
+            # Cleanup: only remove dangling images and build cache, never running containers
             docker image prune -f
+            docker builder prune -f --filter "until=24h"
 
             echo "Production deployed successfully!"
             exit 0
