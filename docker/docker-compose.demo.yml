@@ -81,7 +81,7 @@ services:
       context: ..
       dockerfile: frontend/Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://demo-api.hydro-flow.io
+        NEXT_PUBLIC_API_URL: https://api-demo.hydro-flow.io
     container_name: hydroflow-frontend-demo
     restart: unless-stopped
     environment:
