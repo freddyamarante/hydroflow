@@ -50,7 +50,10 @@ jobs:
               sleep 3
             done
 
-            # Step 2: Push schema to DB BEFORE starting the backend
+            # Step 2a: Backfill NULLs that would block schema push
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod exec -T postgres psql -U hydroflow -d hydroflow -c "UPDATE local_productivo SET bounds = '[]'::jsonb WHERE bounds IS NULL;" 2>/dev/null || true
+
+            # Step 2b: Push schema to DB BEFORE starting the backend
             docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod run --rm -T backend bunx prisma db push --accept-data-loss || { echo "Schema push failed"; exit 1; }
 
             # Step 3: Start all services (backend will find tables ready)
