@@ -42,6 +42,7 @@ await fastify.register(cors, {
         'https://hydro-flow.io',
         'https://www.hydro-flow.io',
         'https://staging.hydro-flow.io',
+        'https://demo.hydro-flow.io',
       ],
   credentials: true,
 });
