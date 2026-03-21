@@ -1,0 +1,127 @@
+# Demo Environment
+# Requires external network: docker network create hydroflow-proxy
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: hydroflow-db-demo
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hydroflow
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: hydroflow_demo
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - postgres_data_demo:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U hydroflow" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hydroflow-demo
+
+  redis:
+    image: redis:7-alpine
+    container_name: hydroflow-cache-demo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6382:6379"
+    volumes:
+      - redis_data_demo:/data
+    networks:
+      - hydroflow-demo
+
+  # MQTT broker with authentication enabled.
+  # Generate the password file on the server before first deploy:
+  #   docker exec -it hydroflow-mqtt-demo mosquitto_passwd -c /mosquitto/config/passwd <username>
+  # Then restart the broker: docker compose restart mosquitto
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: hydroflow-mqtt-demo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1885:1883"
+    volumes:
+      - ../mosquitto/config/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data_demo:/mosquitto/data
+    networks:
+      - hydroflow-demo
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    container_name: hydroflow-api-demo
+    restart: unless-stopped
+    environment:
+      NODE_ENV: staging
+      DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_demo
+      REDIS_URL: redis://redis:6379
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 3000
+      HOST: 0.0.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    networks:
+      hydroflow-demo:
+      hydroflow-proxy:
+        aliases:
+          - backend-demo
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://demo-api.hydro-flow.io
+    container_name: hydroflow-frontend-demo
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      - backend
+    networks:
+      hydroflow-demo:
+      hydroflow-proxy:
+        aliases:
+          - frontend-demo
+
+  mqtt-mock:
+    build:
+      context: ..
+      dockerfile: scripts/Dockerfile
+    container_name: hydroflow-mqtt-mock-demo
+    restart: unless-stopped
+    environment:
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
+      DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_demo
+      MOCK_INTERVAL_MS: "15000"
+      MOCK_RETENTION_HOURS: "24"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hydroflow-demo
+
+networks:
+  hydroflow-demo:
+    driver: bridge
+  hydroflow-proxy:
+    external: true
+
+volumes:
+  postgres_data_demo:
+  redis_data_demo:
+  mosquitto_data_demo:
