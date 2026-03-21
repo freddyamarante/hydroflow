@@ -133,7 +133,7 @@ export function WhatsApp() {
         color="#CCCCCC"
       />
 
-      <div className="absolute -top-56 -left-12 w-[890px] h-[890px] hidden lg:flex bg-[#DDF6F0] rounded-full justify-center items-center">
+      <div className="absolute -top-56 -left-12 w-[890px] h-[890px] hidden lg:flex bg-[#DDF6F0] rounded-full justify-center items-center -z-10">
         <div className="relative w-[600px] h-[600px] hidden lg:block bg-[#F3FEF8] rounded-full" />
       </div>
 

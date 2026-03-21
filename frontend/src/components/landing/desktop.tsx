@@ -41,7 +41,7 @@ export function Desktop() {
       </div>
 
       {/* Decorative elements */}
-      <div className="absolute -bottom-25 -left-20 w-[300px] h-[300px] lg:w-[450px] lg:h-[450px] rounded-full border-[25px] lg:border-[60px] border-[#018DC8]/5 hidden md:block pointer-events-none -z-10" />xz
+      <div className="absolute -bottom-25 -left-20 w-[300px] h-[300px] lg:w-[450px] lg:h-[450px] rounded-full border-[25px] lg:border-[60px] border-[#018DC8]/5 hidden md:block pointer-events-none -z-10" />
       <DotGrid
         className="absolute top-1/3 left-4 hidden lg:block"
         rows={8}
