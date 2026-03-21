@@ -34,15 +34,51 @@ jobs:
             # Ensure shared proxy network exists
             docker network create hydroflow-proxy 2>/dev/null || true
 
-            # Build and deploy production (old containers exiting with 137 is expected)
-            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod build || { echo "❌ Build failed"; exit 1; }
+            # Build production services (fail on build error)
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod build || { echo "Build failed"; exit 1; }
+
+            # Step 1: Start only postgres and wait for it to be healthy
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d postgres
+            echo "Waiting for postgres to be healthy..."
+            for i in $(seq 1 30); do
+              HEALTH=$(docker inspect --format '{{.State.Health.Status}}' hydroflow-db-prod 2>/dev/null || echo "missing")
+              if [ "$HEALTH" = "healthy" ]; then
+                echo "Postgres is healthy (attempt $i)"
+                break
+              fi
+              echo "  Attempt $i: postgres is $HEALTH, waiting..."
+              sleep 3
+            done
+
+            # Step 2: Push schema to DB BEFORE starting the backend
+            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod run --rm -T backend bunx prisma db push --accept-data-loss || { echo "Schema push failed"; exit 1; }
+
+            # Step 3: Start all services (backend will find tables ready)
             docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod up -d
 
-            # Wait for containers to settle
-            sleep 5
+            # Wait for backend to stabilize
+            echo "Waiting for backend container to be running..."
+            for i in $(seq 1 15); do
+              STATE=$(docker inspect --format '{{.State.Status}}' hydroflow-api-prod 2>/dev/null || echo "missing")
+              if [ "$STATE" = "running" ]; then
+                echo "Backend container is running (attempt $i)"
+                sleep 3
+                STATE=$(docker inspect --format '{{.State.Status}}' hydroflow-api-prod 2>/dev/null || echo "missing")
+                if [ "$STATE" = "running" ]; then
+                  echo "Backend is stable"
+                  break
+                fi
+              fi
+              echo "  Attempt $i: backend is $STATE, waiting..."
+              sleep 3
+            done
 
-            # Run database migrations
-            docker compose -p hydroflow-prod -f docker/docker-compose.prod.yml --env-file /opt/hydroflow/.env.prod exec -T backend bunx prisma migrate deploy || { echo "❌ Migration failed"; exit 1; }
+            STATE=$(docker inspect --format '{{.State.Status}}' hydroflow-api-prod 2>/dev/null || echo "missing")
+            if [ "$STATE" != "running" ]; then
+              echo "Backend container is $STATE — dumping logs:"
+              docker logs --tail 50 hydroflow-api-prod 2>&1
+              exit 1
+            fi
 
             # Recreate nginx so it picks up config changes (git reset creates new inodes)
             docker compose -p hydroflow-nginx -f docker/docker-compose.nginx.yml up -d --force-recreate
@@ -53,5 +89,5 @@ jobs:
             # Cleanup
             docker image prune -f
 
-            echo "✅ Production deployed successfully!"
+            echo "Production deployed successfully!"
             exit 0
