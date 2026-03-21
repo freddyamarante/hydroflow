@@ -136,6 +136,97 @@ export function findOverlappingSibling(
 }
 
 /**
+ * Clamp a [lng, lat] point to the nearest position on or inside a polygon ring.
+ * If the point is inside, returns it unchanged. If outside, returns the closest
+ * point on the polygon boundary.
+ */
+export function clampPointToRing(
+  point: [number, number],
+  ring: [number, number][]
+): [number, number] {
+  if (pointInPolygon(point, ring)) return point;
+
+  let minDist = Infinity;
+  let closest: [number, number] = point;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const p = nearestPointOnSegment(point, ring[j], ring[i]);
+    const d = (p[0] - point[0]) ** 2 + (p[1] - point[1]) ** 2;
+    if (d < minDist) {
+      minDist = d;
+      closest = p;
+    }
+  }
+  return closest;
+}
+
+/** Nearest point on line segment AB from point P. */
+function nearestPointOnSegment(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number]
+): [number, number] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  if (dx === 0 && dy === 0) return a;
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy)));
+  return [a[0] + t * dx, a[1] + t * dy];
+}
+
+/** Clamp a {lat, lng} point inside a GeoJSON Polygon. */
+export function clampPointToBounds(
+  point: { lat: number; lng: number },
+  bounds: GeoJSON.Polygon
+): { lat: number; lng: number } {
+  const ring = bounds.coordinates[0] as [number, number][];
+  const [lng, lat] = clampPointToRing([point.lng, point.lat], ring);
+  return { lat, lng };
+}
+
+/**
+ * Snap a [lng, lat] point to the nearest sibling polygon edge/vertex if within
+ * a screen-pixel threshold. The `project` function converts [lng, lat] → screen
+ * pixels so the threshold is resolution-independent.
+ *
+ * Returns the snapped point, or the original if nothing is close enough.
+ */
+export function snapToSiblings(
+  point: [number, number],
+  siblings: { bounds: GeoJSON.Polygon }[],
+  project: (lngLat: [number, number]) => { x: number; y: number },
+  threshold = 10,
+): [number, number] {
+  const pp = project(point);
+  let minDist = threshold;
+  let snapped: [number, number] = point;
+
+  for (const s of siblings) {
+    const ring = s.bounds.coordinates[0] as [number, number][];
+    // Check vertices first (corner snap takes priority)
+    for (const vertex of ring) {
+      const vp = project(vertex);
+      const d = Math.sqrt((pp.x - vp.x) ** 2 + (pp.y - vp.y) ** 2);
+      if (d < minDist) {
+        minDist = d;
+        snapped = vertex;
+      }
+    }
+    // Check edges
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const nearest = nearestPointOnSegment(point, ring[j], ring[i]);
+      const np = project(nearest);
+      const d = Math.sqrt((pp.x - np.x) ** 2 + (pp.y - np.y) ** 2);
+      if (d < minDist) {
+        minDist = d;
+        snapped = nearest;
+      }
+    }
+  }
+
+  return snapped;
+}
+
+/**
  * Get bounding box of a GeoJSON Polygon with optional padding factor.
  * Returns [[west, south], [east, north]] suitable for MapLibre fitBounds/maxBounds.
  */

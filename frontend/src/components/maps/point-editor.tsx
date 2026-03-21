@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Map, MapControls, MapMarker, MarkerContent, useMap } from '@/components/ui/map';
 import { Button } from '@/components/ui/button';
 import { Trash2, MapPin, Layers, LocateFixed } from 'lucide-react';
-import { pointInsideBounds, getPolygonBBox } from '@/lib/geo';
+import { getPolygonBBox, clampPointToBounds } from '@/lib/geo';
 import type MapLibreGL from 'maplibre-gl';
 
 interface PointEditorProps {
@@ -150,15 +150,27 @@ function PointInteraction({
   useEffect(() => {
     if (!isLoaded || !map) return;
 
+    let mouseDownPos: { x: number; y: number } | null = null;
+    const DRAG_THRESHOLD = 5;
+
+    const onMouseDown = (e: MapLibreGL.MapMouseEvent) => {
+      mouseDownPos = { x: e.point.x, y: e.point.y };
+    };
+
     const handleClick = (e: MapLibreGL.MapMouseEvent) => {
-      const clickedPos = { lat: e.lngLat.lat, lng: e.lngLat.lng };
-      if (parentBoundsRef.current && !pointInsideBounds(clickedPos, parentBoundsRef.current)) {
-        onError('El punto debe estar dentro de los límites del sector');
-        return;
+      if (mouseDownPos) {
+        const dx = e.point.x - mouseDownPos.x;
+        const dy = e.point.y - mouseDownPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) return;
+      }
+      let clickedPos = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+      if (parentBoundsRef.current) {
+        clickedPos = clampPointToBounds(clickedPos, parentBoundsRef.current);
       }
       onPositionChange(clickedPos);
     };
 
+    map.on('mousedown', onMouseDown);
     map.on('click', handleClick);
     addBoundsLayer(map);
     addSiblingLayers(map);
@@ -178,6 +190,7 @@ function PointInteraction({
     }
 
     return () => {
+      map.off('mousedown', onMouseDown);
       map.off('click', handleClick);
       try {
         if (map.getLayer('parent-bounds-line')) map.removeLayer('parent-bounds-line');
@@ -286,7 +299,7 @@ function PointInteraction({
 
 export function PointEditor({ value, onChange, parentBounds, siblingPoints = [], className }: PointEditorProps) {
   const [position, setPosition] = useState<{ lat: number; lng: number } | null>(value ?? null);
-  const [isSatellite, setIsSatellite] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
@@ -322,17 +335,14 @@ export function PointEditor({ value, onChange, parentBounds, siblingPoints = [],
 
   const handleDragEnd = useCallback(
     (lngLat: { lng: number; lat: number }) => {
-      const pos = { lat: lngLat.lat, lng: lngLat.lng };
-      if (parentBounds && !pointInsideBounds(pos, parentBounds)) {
-        showError('El punto debe estar dentro de los límites del sector');
-        // Revert: keep previous position, don't call onChange
-        setPosition((prev) => prev);
-        return;
+      let pos = { lat: lngLat.lat, lng: lngLat.lng };
+      if (parentBounds) {
+        pos = clampPointToBounds(pos, parentBounds);
       }
       setPosition(pos);
       onChange(pos);
     },
-    [onChange, parentBounds, showError]
+    [onChange, parentBounds]
   );
 
   const handleClear = useCallback(() => {

@@ -6,6 +6,16 @@
 // Types
 // ---------------------------------------------------------------------------
 
+export interface GeoPolygon {
+  type: 'Polygon'
+  coordinates: [number, number][][]
+}
+
+export interface GeoPoint {
+  lat: number
+  lng: number
+}
+
 export interface UnidadMockEntry {
   nombre: string
   anchoCanal: number
@@ -25,6 +35,7 @@ export interface UnidadSeedConfig {
   anchoCanal: number
   baseVel: number
   baseNivel: number
+  posicion?: GeoPoint
 }
 
 export interface DispositivoSeedConfig {
@@ -37,6 +48,7 @@ export interface SectorSeedConfig {
   nombre: string
   slug: string
   tipo: string
+  bounds?: GeoPolygon
   unidades: UnidadSeedConfig[]
   dispositivo: DispositivoSeedConfig
 }
@@ -45,6 +57,7 @@ export interface AreaSeedConfig {
   nombre: string
   slug: string
   actividadProductiva: string
+  bounds?: GeoPolygon
   sectores: SectorSeedConfig[]
 }
 
@@ -52,6 +65,7 @@ export interface LocalSeedConfig {
   nombre: string
   slug: string
   tipoProductivo: 'finca' | 'laboratorio'
+  bounds?: GeoPolygon
   areas: AreaSeedConfig[]
 }
 
@@ -100,6 +114,98 @@ export function slugify(s: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
+}
+
+// ---------------------------------------------------------------------------
+// Geo helpers
+// ---------------------------------------------------------------------------
+
+interface LocalGeo {
+  lat: number
+  lng: number
+  w: number  // width in degrees (longitude)
+  h: number  // height in degrees (latitude)
+}
+
+function makeRect(west: number, south: number, east: number, north: number): GeoPolygon {
+  return {
+    type: 'Polygon',
+    coordinates: [[
+      [west, south],
+      [east, south],
+      [east, north],
+      [west, north],
+      [west, south],
+    ]],
+  }
+}
+
+/**
+ * Generate geographic bounds/positions for an entire local hierarchy.
+ * Local → rectangle. Areas → 2x2 grid. Sectors → horizontal strips.
+ * Unidades → points spread across each sector.
+ */
+function applyGeo(
+  localSlug: string,
+  geo: LocalGeo,
+  areas: AreaSeedConfig[],
+): GeoPolygon {
+  const { lat, lng, w, h } = geo
+  const localBounds = makeRect(lng - w / 2, lat - h / 2, lng + w / 2, lat + h / 2)
+
+  const margin = Math.max(w, h) * 0.025
+  const areaGap = Math.max(w, h) * 0.012
+
+  const innerLeft = lng - w / 2 + margin
+  const innerBottom = lat - h / 2 + margin
+  const innerW = w - 2 * margin
+  const innerH = h - 2 * margin
+  const areaW = (innerW - areaGap) / 2
+  const areaH = (innerH - areaGap) / 2
+
+  // Grid positions [col, row] where row 0 = bottom, row 1 = top
+  // Finca: Norte=NW, Sur=SE, Este=NE, Oeste=SW
+  // Lab:   Sala A=NW, Sala B=NE, Sala C=SW, Sala D=SE
+  const GRID: [number, number][] = [[0, 1], [1, 0], [1, 1], [0, 0]]
+
+  areas.forEach((area, aIdx) => {
+    const [col, row] = GRID[aIdx]
+    const aLeft = innerLeft + col * (areaW + areaGap)
+    const aBottom = innerBottom + row * (areaH + areaGap)
+
+    area.bounds = makeRect(aLeft, aBottom, aLeft + areaW, aBottom + areaH)
+
+    // 3 sectors as horizontal strips, top to bottom
+    const sGap = areaH * 0.025
+    const sH = (areaH - 2 * sGap) / 3
+
+    area.sectores.forEach((sector, sIdx) => {
+      const sTop = aBottom + areaH - sIdx * (sH + sGap)
+      const sBot = sTop - sH
+
+      sector.bounds = makeRect(aLeft, sBot, aLeft + areaW, sTop)
+
+      // Unidades spread across the sector
+      const padX = areaW * 0.1
+      const nUnits = sector.unidades.length
+      const spacingX = nUnits > 1 ? (areaW - 2 * padX) / (nUnits - 1) : 0
+      const midY = (sBot + sTop) / 2
+      const yRange = sH * 0.15
+
+      sector.unidades.forEach((u, uIdx) => {
+        // Alternate slight Y offset for a natural zigzag
+        const ySeed = `${localSlug}/${area.slug}/${sector.slug}/${u.slug}/y`
+        const yOff = seededValue(ySeed, -yRange, yRange, 6)
+
+        u.posicion = {
+          lat: midY + yOff,
+          lng: aLeft + padX + uIdx * spacingX,
+        }
+      })
+    })
+  })
+
+  return localBounds
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +259,7 @@ const UNIDADES_PER_SECTOR = 4
 function buildLocal(
   nombre: string,
   tipoProductivo: 'finca' | 'laboratorio',
+  geo?: LocalGeo,
 ): LocalSeedConfig {
   const localSlug = slugify(nombre)
   const templates = tipoProductivo === 'laboratorio' ? LAB_AREAS : FINCA_AREAS
@@ -209,11 +316,17 @@ function buildLocal(
     }
   })
 
-  return { nombre, slug: localSlug, tipoProductivo, areas }
+  // Apply geographic coordinates if provided
+  let bounds: GeoPolygon | undefined
+  if (geo) {
+    bounds = applyGeo(localSlug, geo, areas)
+  }
+
+  return { nombre, slug: localSlug, tipoProductivo, bounds, areas }
 }
 
 // ---------------------------------------------------------------------------
-// Full hierarchy
+// Full hierarchy — real Ecuador shrimp farm locations
 // ---------------------------------------------------------------------------
 
 export const HIERARCHY: GrupoSeedConfig[] = [
@@ -228,8 +341,10 @@ export const HIERARCHY: GrupoSeedConfig[] = [
         ruc: '0992123456001',
         actividadEconomica: 'Criadero de camaron',
         locales: [
-          buildLocal('Finca Delia', 'finca'),
-          buildLocal('Finca Santay', 'finca'),
+          // Naranjal coast — major shrimp farming zone south of Guayaquil
+          buildLocal('Finca Delia', 'finca', { lat: -2.5180, lng: -79.6350, w: 0.0095, h: 0.0070 }),
+          // Near Isla Santay, Durán side — estuary area
+          buildLocal('Finca Santay', 'finca', { lat: -2.2240, lng: -79.8730, w: 0.0080, h: 0.0065 }),
         ],
       },
       {
@@ -238,8 +353,10 @@ export const HIERARCHY: GrupoSeedConfig[] = [
         ruc: '0991987654001',
         actividadEconomica: 'Laboratorio de larvas',
         locales: [
-          buildLocal('Laboratorio Central', 'laboratorio'),
-          buildLocal('Finca Puna', 'finca'),
+          // Industrial Guayaquil, near Daule river — lab facility
+          buildLocal('Laboratorio Central', 'laboratorio', { lat: -2.1480, lng: -79.9620, w: 0.0040, h: 0.0035 }),
+          // Isla Puná, Gulf of Guayaquil — coastal farm
+          buildLocal('Finca Puna', 'finca', { lat: -2.7350, lng: -80.1280, w: 0.0105, h: 0.0072 }),
         ],
       },
     ],
@@ -255,8 +372,10 @@ export const HIERARCHY: GrupoSeedConfig[] = [
         ruc: '0793456789001',
         actividadEconomica: 'Procesamiento de camaron',
         locales: [
-          buildLocal('Finca Aurora', 'finca'),
-          buildLocal('Finca Balao', 'finca'),
+          // Machala coast — El Oro province shrimp belt
+          buildLocal('Finca Aurora', 'finca', { lat: -3.2380, lng: -79.9650, w: 0.0090, h: 0.0068 }),
+          // Balao, Guayas — another major shrimp zone
+          buildLocal('Finca Balao', 'finca', { lat: -2.9060, lng: -79.8050, w: 0.0085, h: 0.0070 }),
         ],
       },
       {
@@ -265,8 +384,10 @@ export const HIERARCHY: GrupoSeedConfig[] = [
         ruc: '0794567890001',
         actividadEconomica: 'Biotecnologia acuicola',
         locales: [
-          buildLocal('Laboratorio Pedernales', 'laboratorio'),
-          buildLocal('Finca Esmeraldas', 'finca'),
+          // Pedernales, Manabí — northern coast lab
+          buildLocal('Laboratorio Pedernales', 'laboratorio', { lat: 0.0720, lng: -80.0540, w: 0.0038, h: 0.0032 }),
+          // San Lorenzo, Esmeraldas — mangrove estuary farm
+          buildLocal('Finca Esmeraldas', 'finca', { lat: 0.9380, lng: -79.6550, w: 0.0088, h: 0.0062 }),
         ],
       },
     ],
@@ -281,14 +402,20 @@ export const HIERARCHY: GrupoSeedConfig[] = [
         marcaComercial: 'OceanFarm',
         ruc: '1395678901001',
         actividadEconomica: 'Acuicultura oceanica',
-        locales: [buildLocal('Finca Muisne', 'finca')],
+        locales: [
+          // Muisne estuary, Esmeraldas — real shrimp farming area
+          buildLocal('Finca Muisne', 'finca', { lat: 0.6150, lng: -80.0250, w: 0.0092, h: 0.0068 }),
+        ],
       },
       {
         razonSocial: 'AquaVida S.A.',
         marcaComercial: 'AquaVida',
         ruc: '1396789012001',
         actividadEconomica: 'Acuicultura sostenible',
-        locales: [buildLocal('Finca Tonchigue', 'finca')],
+        locales: [
+          // Tonchigüe, Esmeraldas — coastal shrimp zone
+          buildLocal('Finca Tonchigue', 'finca', { lat: 0.4680, lng: -80.0720, w: 0.0078, h: 0.0060 }),
+        ],
       },
     ],
   },

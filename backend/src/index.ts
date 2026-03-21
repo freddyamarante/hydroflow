@@ -19,8 +19,13 @@ import reglasRoutes from './routes/reglas.js';
 import alertasRoutes from './routes/alertas.js';
 import adminRoutes from './routes/admin.js';
 import meRoutes from './routes/me.js';
+import tiposActividadRoutes from './routes/tipos-actividad.js';
+import tiposUnidadRoutes from './routes/tipos-unidad.js';
+import variablesRoutes from './routes/variables.js';
 import { connectMqtt, disconnectMqtt, getMqttClient } from './services/mqtt.js';
+import { initFormulaEngine } from './services/formula-engine.js';
 import { initReadingsHandler } from './services/readings.js';
+import { initRuleEngine } from './services/rule-engine.js';
 
 // Initialize Fastify
 const fastify = Fastify({
@@ -37,6 +42,7 @@ await fastify.register(cors, {
         'https://hydro-flow.io',
         'https://www.hydro-flow.io',
         'https://staging.hydro-flow.io',
+        'https://demo.hydro-flow.io',
       ],
   credentials: true,
 });
@@ -65,6 +71,9 @@ await fastify.register(reglasRoutes, { prefix: '/api' });
 await fastify.register(alertasRoutes, { prefix: '/api' });
 await fastify.register(adminRoutes, { prefix: '/api' });
 await fastify.register(meRoutes, { prefix: '/api' });
+await fastify.register(tiposActividadRoutes, { prefix: '/api' });
+await fastify.register(tiposUnidadRoutes, { prefix: '/api' });
+await fastify.register(variablesRoutes, { prefix: '/api' });
 
 // Health check endpoint
 fastify.get('/health', async (_request, reply) => {
@@ -103,7 +112,6 @@ fastify.get('/', async () => {
       health: '/health',
       auth: {
         login: 'POST /auth/login',
-        register: 'POST /auth/register',
         logout: 'POST /auth/logout',
         me: 'GET /auth/me',
         refresh: 'POST /auth/refresh',
@@ -119,6 +127,13 @@ fastify.get('/', async () => {
         dispositivos: '/api/dispositivos',
         tiposDispositivo: '/api/tipos-dispositivo',
         lecturas: '/api/lecturas',
+        reglas: '/api/reglas',
+        alertas: '/api/alertas',
+        equipos: '/api/equipos',
+        tiposActividad: '/api/tipos-actividad',
+        tiposUnidad: '/api/tipos-unidad',
+        variables: '/api/tipos-unidad/:tipoUnidadId/variables',
+        admin: '/api/admin',
         ws: '/api/ws/lecturas/:unidadId',
       },
     },
@@ -149,6 +164,12 @@ const start = async () => {
 
     fastify.log.info(`HydroFlow Backend running on ${config.HOST}:${config.PORT}`);
     fastify.log.info(`Environment: ${config.NODE_ENV}`);
+
+    // Initialize formula engine (load variable definitions into cache)
+    await initFormulaEngine();
+
+    // Initialize rule engine (load active rules into cache)
+    await initRuleEngine();
 
     // Connect MQTT (non-blocking, reconnects automatically)
     initReadingsHandler();

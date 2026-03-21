@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Map, MapControls, useMap } from '@/components/ui/map';
 import { Button } from '@/components/ui/button';
 import { Trash2, Satellite, MapIcon, LocateFixed } from 'lucide-react';
-import { pointInPolygon, polygonInsidePolygon, getPolygonBBox, findOverlappingSibling } from '@/lib/geo';
+import { getPolygonBBox, clampPointToRing, snapToSiblings } from '@/lib/geo';
 import type MapLibreGL from 'maplibre-gl';
 
 interface BoundsEditorProps {
@@ -208,6 +208,29 @@ function BoundsInteraction({
         });
       }
 
+      // Cursor-following ghost point (visible while drawing)
+      if (!m.getSource('cursor-point-source')) {
+        m.addSource('cursor-point-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+      if (!m.getLayer('cursor-point-layer')) {
+        m.addLayer({
+          id: 'cursor-point-layer',
+          type: 'circle',
+          source: 'cursor-point-source',
+          paint: {
+            'circle-radius': 5,
+            'circle-color': '#3b82f6',
+            'circle-opacity': 0.5,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-opacity': 0.5,
+          },
+        });
+      }
+
       layersAddedRef.current = true;
     },
     [siblingPolygons, isSatellite]
@@ -215,6 +238,8 @@ function BoundsInteraction({
 
   const removeLayers = useCallback((m: MapLibreGL.Map) => {
     try {
+      if (m.getLayer('cursor-point-layer')) m.removeLayer('cursor-point-layer');
+      if (m.getSource('cursor-point-source')) m.removeSource('cursor-point-source');
       if (m.getLayer('vertices-layer')) m.removeLayer('vertices-layer');
       if (m.getSource('vertices-source')) m.removeSource('vertices-source');
       if (m.getLayer('polygon-line')) m.removeLayer('polygon-line');
@@ -262,28 +287,83 @@ function BoundsInteraction({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, map, addLayers, removeLayers]);
 
-  // Click handler
+  // Click handler — ignore clicks that are part of a drag/pan
   useEffect(() => {
     if (!isLoaded || !map) return;
 
+    let mouseDownPos: { x: number; y: number } | null = null;
+    const DRAG_THRESHOLD = 5; // pixels
+
+    const onMouseDown = (e: MapLibreGL.MapMouseEvent) => {
+      mouseDownPos = { x: e.point.x, y: e.point.y };
+    };
+
     const handler = (e: MapLibreGL.MapMouseEvent) => {
       if (closed) return;
-      const point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      // If mouse moved more than threshold between down and up, it was a drag
+      if (mouseDownPos) {
+        const dx = e.point.x - mouseDownPos.x;
+        const dy = e.point.y - mouseDownPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) return;
+      }
+      let point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
       if (parentBounds) {
-        const parentRing = parentBounds.coordinates[0] as [number, number][];
-        if (!pointInPolygon(point, parentRing)) {
-          onError('El punto debe estar dentro de los limites del local/area');
-          return;
+        point = clampPointToRing(point, parentBounds.coordinates[0] as [number, number][]);
+      }
+      if (siblingPolygons && siblingPolygons.length > 0) {
+        point = snapToSiblings(point, siblingPolygons, (lngLat) => map.project(lngLat as [number, number]));
+        // Re-clamp after snap in case snap pushed outside parent
+        if (parentBounds) {
+          point = clampPointToRing(point, parentBounds.coordinates[0] as [number, number][]);
         }
       }
       onClickMap(point);
     };
 
-    map.on('click', handler);
-    return () => {
-      map.off('click', handler);
+    const onMouseMove = (e: MapLibreGL.MapMouseEvent) => {
+      if (closed) return;
+      let coords: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      if (parentBounds) {
+        coords = clampPointToRing(coords, parentBounds.coordinates[0] as [number, number][]);
+      }
+      if (siblingPolygons && siblingPolygons.length > 0) {
+        coords = snapToSiblings(coords, siblingPolygons, (lngLat) => map.project(lngLat as [number, number]));
+        if (parentBounds) {
+          coords = clampPointToRing(coords, parentBounds.coordinates[0] as [number, number][]);
+        }
+      }
+      const source = map.getSource('cursor-point-source') as MapLibreGL.GeoJSONSource | undefined;
+      if (source) {
+        source.setData({
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Point', coordinates: coords },
+          }],
+        });
+      }
     };
-  }, [isLoaded, map, closed, onClickMap, parentBounds, onError]);
+
+    // Show crosshair while drawing
+    if (!closed) {
+      map.getCanvas().style.cursor = 'crosshair';
+    }
+
+    map.on('mousedown', onMouseDown);
+    map.on('click', handler);
+    map.on('mousemove', onMouseMove);
+    return () => {
+      try {
+        map.off('mousedown', onMouseDown);
+        map.off('click', handler);
+        map.off('mousemove', onMouseMove);
+        map.getCanvas().style.cursor = '';
+        const source = map.getSource('cursor-point-source') as MapLibreGL.GeoJSONSource | undefined;
+        if (source) source.setData({ type: 'FeatureCollection', features: [] });
+      } catch { /* map may already be destroyed */ }
+    };
+  }, [isLoaded, map, closed, onClickMap, parentBounds, siblingPolygons, onError]);
 
   // Update polygon and vertex sources when vertices/closed change
   useEffect(() => {
@@ -347,6 +427,11 @@ function BoundsInteraction({
         map.setPaintProperty('vertices-layer', 'circle-radius', isSatellite ? 7 : 5);
         map.setPaintProperty('vertices-layer', 'circle-color', isSatellite ? '#93c5fd' : '#3b82f6');
         map.setPaintProperty('vertices-layer', 'circle-stroke-width', isSatellite ? 3 : 2);
+      }
+      if (map.getLayer('cursor-point-layer')) {
+        map.setPaintProperty('cursor-point-layer', 'circle-radius', isSatellite ? 7 : 5);
+        map.setPaintProperty('cursor-point-layer', 'circle-color', isSatellite ? '#93c5fd' : '#3b82f6');
+        map.setPaintProperty('cursor-point-layer', 'circle-stroke-width', isSatellite ? 3 : 2);
       }
       // Adjust sibling layer opacities for satellite contrast
       if (siblingPolygons) {
@@ -460,7 +545,7 @@ function updateSiblingData(
 export function BoundsEditor({ value, onChange, parentBounds, siblingPolygons, className }: BoundsEditorProps) {
   const [vertices, setVertices] = useState<[number, number][]>([]);
   const [closed, setClosed] = useState(false);
-  const [isSatellite, setIsSatellite] = useState(false);
+  const [isSatellite, setIsSatellite] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [recenterTrigger, setRecenterTrigger] = useState(0);
@@ -497,22 +582,10 @@ export function BoundsEditor({ value, onChange, parentBounds, siblingPolygons, c
 
   const handleClose = useCallback(() => {
     if (vertices.length < 3) return;
-    if (parentBounds) {
-      const parentRing = parentBounds.coordinates[0] as [number, number][];
-      if (!polygonInsidePolygon(vertices, parentRing)) {
-        handleError('Todos los vertices deben estar dentro de los limites del local/area');
-        return;
-      }
-    }
-    if (siblingPolygons && siblingPolygons.length > 0) {
-      const overlapName = findOverlappingSibling(vertices, siblingPolygons);
-      if (overlapName) {
-        handleError(`El poligono se superpone con: ${overlapName}`);
-        return;
-      }
-    }
-    setClosed(true);
+    // Vertices are clamped to parent bounds and snapped to sibling edges on click.
+    // Shared edges with siblings are valid (snapping enables exact boundary sharing).
     const ring = [...vertices, vertices[0]];
+    setClosed(true);
     onChange({ type: 'Polygon', coordinates: [ring] });
   }, [vertices, onChange, parentBounds, siblingPolygons, handleError]);
 

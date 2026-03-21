@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Building2,
   MapPin,
@@ -18,6 +18,7 @@ import api from '@/lib/api';
 import { StatsCard } from '@/components/dashboard/stats-card';
 import { StatsGrid } from '@/components/dashboard/stats-grid';
 import { LineChartCard } from '@/components/dashboard/line-chart-card';
+import { LecturasChartFilter, type PeriodoKey } from '@/components/dashboard/lecturas-chart-filter';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -105,7 +106,21 @@ export function AdminDashboard() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [lecturasStats, setLecturasStats] = useState<LecturaStat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingChart, setLoadingChart] = useState(false);
+  const [periodo, setPeriodo] = useState<PeriodoKey>('24h');
   const [error, setError] = useState<string | null>(null);
+
+  const fetchLecturasStats = useCallback(async (p: PeriodoKey) => {
+    setLoadingChart(true);
+    try {
+      const res = await api.get('/api/admin/lecturas-stats', { params: { periodo: p } });
+      setLecturasStats(res.data.data ?? []);
+    } catch {
+      // silent — chart just won't update
+    } finally {
+      setLoadingChart(false);
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
@@ -113,7 +128,7 @@ export function AdminDashboard() {
         const [statsRes, alertsRes, lecturasRes] = await Promise.all([
           api.get('/api/admin/stats'),
           api.get('/api/admin/alerts', { params: { limit: 10 } }),
-          api.get('/api/admin/lecturas-stats', { params: { periodo: '24h' } }),
+          api.get('/api/admin/lecturas-stats', { params: { periodo } }),
         ]);
 
         setStats(statsRes.data);
@@ -128,6 +143,14 @@ export function AdminDashboard() {
 
     fetchData();
   }, []);
+
+  const handlePeriodoChange = useCallback(
+    (p: PeriodoKey) => {
+      setPeriodo(p);
+      fetchLecturasStats(p);
+    },
+    [fetchLecturasStats],
+  );
 
   if (loading) {
     return (
@@ -216,15 +239,31 @@ export function AdminDashboard() {
       )}
 
       {/* Lecturas Chart */}
-      {lecturasStats.length > 0 && (
-        <LineChartCard
-          title="Lecturas (ultimas 24 horas)"
-          data={lecturasStats}
-          dataKey="count"
-          color="#3b82f6"
-          unit="lecturas"
-        />
-      )}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium">Lecturas en el tiempo</h3>
+          <LecturasChartFilter
+            value={periodo}
+            onChange={handlePeriodoChange}
+            loading={loadingChart}
+          />
+        </div>
+        {loadingChart ? (
+          <Skeleton className="h-72 rounded-xl" />
+        ) : lecturasStats.length > 0 ? (
+          <LineChartCard
+            title={`Lecturas (ultimos ${periodo === '24h' ? '24 horas' : periodo === '7d' ? '7 dias' : '30 dias'})`}
+            data={lecturasStats}
+            dataKey="count"
+            color="#3b82f6"
+            unit="lecturas"
+          />
+        ) : (
+          <div className="flex h-72 items-center justify-center rounded-lg border border-dashed">
+            <p className="text-muted-foreground text-sm">Sin datos para este periodo</p>
+          </div>
+        )}
+      </div>
 
       {/* Alerts Table */}
       <Card>

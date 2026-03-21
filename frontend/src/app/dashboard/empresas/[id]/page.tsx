@@ -237,7 +237,7 @@ export default function EmpresaDetailPage() {
     {
       label: 'Ver',
       icon: <Eye className="size-4" />,
-      onClick: (local) => router.push(`/dashboard/empresas/${empresaId}/locales/${local.id}`),
+      onClick: (local) => router.push(`/dashboard/locales/${local.id}`),
     },
   ];
 
@@ -371,7 +371,7 @@ export default function EmpresaDetailPage() {
           emptyMessage="No hay locales productivos registrados."
           rowActions={localActions}
           onRowClick={(local) =>
-            router.push(`/dashboard/empresas/${empresaId}/locales/${local.id}`)
+            router.push(`/dashboard/locales/${local.id}`)
           }
         />
       </div>

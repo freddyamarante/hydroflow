@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
 import { requireAdmin } from '../lib/rbac.js';
+import { Rol } from '@prisma/client';
 
 const createGrupoCorporativoSchema = z.object({
   razonSocial: z.string().min(1, 'Razon social is required'),
@@ -16,7 +17,7 @@ const updateGrupoCorporativoSchema = createGrupoCorporativoSchema.partial();
 const gruposCorporativosRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('onRequest', fastify.authenticate);
 
-  // GET /grupos-corporativos - List with pagination
+  // GET /grupos-corporativos - List with pagination (scoped for non-admins)
   fastify.get('/grupos-corporativos', async (request, reply) => {
     try {
       const { page = '1', limit = '20' } = request.query as { page?: string; limit?: string };
@@ -24,13 +25,31 @@ const gruposCorporativosRoutes: FastifyPluginAsync = async (fastify) => {
       const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
       const skip = (pageNum - 1) * limitNum;
 
+      const user = request.user as { id: string; rol: Rol; empresaId?: string };
+
+      // Non-admins can only see the grupo that contains their empresa
+      let where: any = {};
+      if (user.rol !== 'ADMIN' && user.empresaId) {
+        const empresa = await prisma.empresa.findUnique({
+          where: { id: user.empresaId },
+          select: { grupoCorporativoId: true },
+        });
+        if (empresa?.grupoCorporativoId) {
+          where = { id: empresa.grupoCorporativoId };
+        } else {
+          return { items: [], total: 0, page: pageNum, totalPages: 0 };
+        }
+      }
+
       const [items, total] = await Promise.all([
         prisma.grupoCorporativo.findMany({
+          where,
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: { _count: { select: { empresas: true } } },
         }),
-        prisma.grupoCorporativo.count(),
+        prisma.grupoCorporativo.count({ where }),
       ]);
 
       return {
@@ -48,10 +67,25 @@ const gruposCorporativosRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /grupos-corporativos/:id - Single grupo corporativo with empresas
+  // GET /grupos-corporativos/:id - Single grupo corporativo with empresas (scoped)
   fastify.get('/grupos-corporativos/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user as { id: string; rol: Rol; empresaId?: string };
+
+      // Non-admins: verify their empresa belongs to this grupo
+      if (user.rol !== 'ADMIN') {
+        if (!user.empresaId) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'You do not have access to this resource' });
+        }
+        const empresa = await prisma.empresa.findUnique({
+          where: { id: user.empresaId },
+          select: { grupoCorporativoId: true },
+        });
+        if (empresa?.grupoCorporativoId !== id) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'You do not have access to this resource' });
+        }
+      }
 
       const grupo = await prisma.grupoCorporativo.findUnique({
         where: { id },

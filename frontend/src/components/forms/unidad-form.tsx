@@ -29,7 +29,9 @@ const unidadSchema = z.object({
   nombre: z.string().min(1, 'El nombre es requerido'),
   sectorId: z.string().min(1, 'El sector es requerido'),
   topicMqtt: z.string().optional(),
-  posicion: z.any().optional(),
+  posicion: z.any().refine((v) => v && typeof v.lat === 'number' && typeof v.lng === 'number', {
+    message: 'Debes colocar la posicion de la unidad en el mapa',
+  }),
   dispositivoId: z.string().optional(),
 });
 

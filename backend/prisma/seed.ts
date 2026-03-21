@@ -17,6 +17,9 @@ async function main() {
   await prisma.regla.deleteMany()
   await prisma.equipo.deleteMany()
   await prisma.unidadProduccion.deleteMany()
+  await prisma.variableDefinicion.deleteMany()
+  await prisma.tipoUnidadProduccion.deleteMany()
+  await prisma.tipoActividadProductiva.deleteMany()
   await prisma.dispositivo.deleteMany().catch(() => {})
   await prisma.tipoDispositivo.deleteMany().catch(() => {})
   await prisma.sector.deleteMany()
@@ -45,6 +48,10 @@ async function main() {
   // Track IDs for user assignments
   let produmarId = ''
   let acuacorpId = ''
+
+  // Dynamic variable system IDs (used in loop, created later)
+  const tipoActividadBombeoId = makeId('tipo-act', 'estacion-bombeo')
+  const tipoUnidadBombeoStdId = makeId('tipo-unidad', 'grupo-bombeo-std')
   const produmarLocalIds: string[] = []
   const acuacorpLocalIds: string[] = []
 
@@ -89,6 +96,7 @@ async function main() {
           nombre: local.nombre,
           tipoProductivo: local.tipoProductivo,
           empresaId,
+          ...(local.bounds ? { bounds: local.bounds } : {}),
         })
 
         for (const area of local.areas) {
@@ -99,6 +107,7 @@ async function main() {
             nombre: area.nombre,
             localProductivoId: localId,
             actividadProductiva: area.actividadProductiva,
+            ...(area.bounds ? { bounds: area.bounds } : {}),
           })
 
           for (const sector of area.sectores) {
@@ -109,6 +118,7 @@ async function main() {
               nombre: sector.nombre,
               areaId,
               tipo: sector.tipo,
+              ...(sector.bounds ? { bounds: sector.bounds } : {}),
             })
 
             // Create dispositivo for this sector
@@ -141,7 +151,9 @@ async function main() {
                 sectorId,
                 topicMqtt: topic,
                 dispositivoId,
+                tipoUnidadProduccionId: tipoUnidadBombeoStdId,
                 configuracion: { ancho_canal: unidad.anchoCanal },
+                ...(unidad.posicion ? { posicion: unidad.posicion } : {}),
               })
 
               equipoRecords.push(
@@ -191,6 +203,115 @@ async function main() {
       }
     }
   }
+
+  // ------------------------------------------------------------------
+  // Dynamic Variable System — Tipos & Variables
+  // ------------------------------------------------------------------
+
+  await prisma.tipoActividadProductiva.createMany({
+    data: [
+      {
+        id: tipoActividadBombeoId,
+        nombre: 'Estación de Bombeo',
+        codigo: 'ESTACION_BOMBEO',
+        descripcion: 'Estaciones de bombeo de agua para acuicultura',
+      },
+    ],
+  })
+  console.log('Created 1 tipo de actividad productiva')
+
+  await prisma.tipoUnidadProduccion.createMany({
+    data: [
+      {
+        id: tipoUnidadBombeoStdId,
+        nombre: 'Grupo de Bombeo Estándar',
+        codigo: 'GRUPO_BOMBEO_STD',
+        descripcion: 'Grupo de bombeo con medición de velocidad y nivel de agua',
+        tipoActividadProductivaId: tipoActividadBombeoId,
+      },
+    ],
+  })
+  console.log('Created 1 tipo de unidad de produccion')
+
+  await prisma.variableDefinicion.createMany({
+    data: [
+      {
+        tipoUnidadProduccionId: tipoUnidadBombeoStdId,
+        nombre: 'Velocidad del Agua',
+        codigo: 'velocidad',
+        unidad: 'm/s',
+        tipo: 'SENSOR',
+        orden: 1,
+        esVisibleEnDashboard: true,
+        esVisibleEnMapa: true,
+        iconoSugerido: 'Gauge',
+        colorSugerido: 'blue',
+      },
+      {
+        tipoUnidadProduccionId: tipoUnidadBombeoStdId,
+        nombre: 'Nivel del Agua',
+        codigo: 'nivel',
+        unidad: 'm',
+        tipo: 'SENSOR',
+        orden: 2,
+        esVisibleEnDashboard: true,
+        esVisibleEnMapa: true,
+        iconoSugerido: 'Waves',
+        colorSugerido: 'cyan',
+      },
+      {
+        tipoUnidadProduccionId: tipoUnidadBombeoStdId,
+        nombre: 'Ancho del Canal',
+        codigo: 'ancho_canal',
+        unidad: 'm',
+        tipo: 'FIJA',
+        valorPorDefecto: 3.0,
+        orden: 3,
+        esVisibleEnDashboard: false,
+        esVisibleEnMapa: false,
+      },
+      {
+        tipoUnidadProduccionId: tipoUnidadBombeoStdId,
+        nombre: 'Flujo Instantáneo',
+        codigo: 'flujo_instantaneo',
+        unidad: 'm³/h',
+        tipo: 'CALCULADA',
+        formula: 'velocidad * nivel * ancho_canal',
+        orden: 4,
+        esVisibleEnDashboard: true,
+        esVisibleEnMapa: true,
+        iconoSugerido: 'Droplets',
+        colorSugerido: 'teal',
+      },
+      {
+        tipoUnidadProduccionId: tipoUnidadBombeoStdId,
+        nombre: 'Bomba Encendida',
+        codigo: 'bomba_encendida',
+        unidad: '',
+        tipo: 'CALCULADA',
+        formula: '(nivel > 0) and (flujo_instantaneo > 0)',
+        orden: 5,
+        esVisibleEnDashboard: true,
+        esVisibleEnMapa: true,
+        iconoSugerido: 'Power',
+        colorSugerido: 'green',
+      },
+      {
+        tipoUnidadProduccionId: tipoUnidadBombeoStdId,
+        nombre: 'Volumen',
+        codigo: 'volumen',
+        unidad: 'm³',
+        tipo: 'CALCULADA',
+        formula: 'flujo_instantaneo * delta_t / 3600',
+        orden: 6,
+        esVisibleEnDashboard: true,
+        esVisibleEnMapa: false,
+        iconoSugerido: 'Box',
+        colorSugerido: 'indigo',
+      },
+    ],
+  })
+  console.log('Created 6 variable definitions for Grupo de Bombeo Estándar')
 
   // Batch-insert in dependency order
   await prisma.grupoCorporativo.createMany({ data: grupoRecords })

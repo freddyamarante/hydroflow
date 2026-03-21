@@ -1,0 +1,307 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import api from '@/lib/api';
+import { Breadcrumbs } from '@/components/navigation/breadcrumbs';
+import { StatsGrid } from '@/components/dashboard/stats-grid';
+import { StatsCard } from '@/components/dashboard/stats-card';
+import { DataTable, ColumnDef, RowAction } from '@/components/ui/data-table';
+import { SectorForm, SectorFormValues } from '@/components/forms/sector-form';
+import { UnidadForm, UnidadFormValues, transformUnidadPayload } from '@/components/forms/unidad-form';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { Box, Pencil, Trash2, Plus, MapPinOff } from 'lucide-react';
+import { DashboardMapCard, PointOverlayLayers } from '@/components/maps/dashboard-map';
+
+interface SectorDashboard {
+  currentUserLocalRole: 'ADMIN' | 'SUPERVISOR' | 'VISOR' | null;
+  sector: {
+    id: string; nombre: string; areaId: string; tipo: string | null;
+    bounds: unknown; detalles: unknown;
+    usuarioResponsableId: string | null;
+    usuarioResponsable: { id: string; nombre: string; apellido?: string | null } | null;
+    area: {
+      id: string; nombre: string; bounds: unknown;
+      localProductivo: { id: string; nombre: string };
+    };
+  };
+  stats: { totalUnidades: number; };
+  unidades: {
+    id: string; nombre: string; topicMqtt: string;
+    posicion: unknown; dispositivoCodigo: string | null;
+    ultimaLectura: string | null;
+    valores: Record<string, number> | null;
+  }[];
+  siblingSectores: { id: string; nombre: string; bounds: unknown }[];
+}
+
+export default function SectorDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const localId = params.id as string;
+  const areaId = params.areaId as string;
+  const sectorId = params.sectorId as string;
+
+  const [data, setData] = useState<SectorDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [unidadDialogOpen, setUnidadDialogOpen] = useState(false);
+  const [editUnidadDialogOpen, setEditUnidadDialogOpen] = useState(false);
+  const [deleteUnidadDialogOpen, setDeleteUnidadDialogOpen] = useState(false);
+  const [selectedUnidad, setSelectedUnidad] = useState<SectorDashboard['unidades'][0] | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [clippingDialogOpen, setClippingDialogOpen] = useState(false);
+  const [clippingData, setClippingData] = useState<{
+    unidadesNulled: { id: string; nombre: string }[];
+  } | null>(null);
+  const [pendingEditValues, setPendingEditValues] = useState<SectorFormValues | null>(null);
+  const [localUsuarios, setLocalUsuarios] = useState<{ id: string; nombre: string; apellido?: string | null }[]>([]);
+
+  const fetchDashboard = useCallback(async () => {
+    try {
+      setLoading(true);
+      const sectorRes = await api.get(`/api/sectores/${sectorId}/dashboard`);
+      setData(sectorRes.data);
+      if (sectorRes.data.currentUserLocalRole === 'ADMIN') {
+        const localUsersRes = await api.get(`/api/locales/${localId}/usuarios`).catch(() => ({ data: { items: [] } }));
+        setLocalUsuarios(localUsersRes.data.items.map((u: any) => ({
+          id: u.usuarioId, nombre: u.nombre, apellido: u.apellido,
+        })));
+      }
+    } catch {
+      setError('Error al cargar los datos del sector');
+    } finally {
+      setLoading(false);
+    }
+  }, [sectorId, localId]);
+
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+
+  async function handleEditSubmit(values: SectorFormValues) {
+    try {
+      setSubmitting(true);
+      const preview = await api.put(`/api/sectores/${sectorId}?dryRun=true`, values);
+      if (preview.data._clipping) {
+        setClippingData(preview.data._clipping);
+        setPendingEditValues(values);
+        setClippingDialogOpen(true);
+        return;
+      }
+      await api.put(`/api/sectores/${sectorId}`, values);
+      setEditDialogOpen(false);
+      fetchDashboard();
+    } catch { setError('Error al actualizar el sector'); } finally { setSubmitting(false); }
+  }
+
+  async function handleConfirmClipping() {
+    if (!pendingEditValues) return;
+    try {
+      setSubmitting(true);
+      await api.put(`/api/sectores/${sectorId}`, pendingEditValues);
+      setClippingDialogOpen(false);
+      setEditDialogOpen(false);
+      setClippingData(null);
+      setPendingEditValues(null);
+      fetchDashboard();
+    } catch { setError('Error al actualizar el sector'); } finally { setSubmitting(false); }
+  }
+
+  async function handleDelete() {
+    try { setSubmitting(true); await api.delete(`/api/sectores/${sectorId}`); router.push(`/dashboard/locales/${localId}/areas/${areaId}`); }
+    catch { setError('Error al eliminar el sector'); } finally { setSubmitting(false); }
+  }
+
+  async function handleCreateUnidad(values: UnidadFormValues) {
+    try { setSubmitting(true); await api.post('/api/unidades', transformUnidadPayload(values)); setUnidadDialogOpen(false); fetchDashboard(); }
+    catch { setError('Error al crear la unidad de produccion'); } finally { setSubmitting(false); }
+  }
+
+  async function handleEditUnidad(values: UnidadFormValues) {
+    if (!selectedUnidad) return;
+    try { setSubmitting(true); await api.put(`/api/unidades/${selectedUnidad.id}`, transformUnidadPayload(values)); setEditUnidadDialogOpen(false); setSelectedUnidad(null); fetchDashboard(); }
+    catch { setError('Error al actualizar la unidad de produccion'); } finally { setSubmitting(false); }
+  }
+
+  async function handleDeleteUnidad() {
+    if (!selectedUnidad) return;
+    try { setSubmitting(true); await api.delete(`/api/unidades/${selectedUnidad.id}`); setDeleteUnidadDialogOpen(false); setSelectedUnidad(null); fetchDashboard(); }
+    catch { setError('Error al eliminar la unidad de produccion'); } finally { setSubmitting(false); }
+  }
+
+  if (loading) return <div className="flex items-center justify-center h-64"><p className="text-muted-foreground">Cargando...</p></div>;
+  if (error && !data) return <div className="flex items-center justify-center h-64"><p className="text-destructive">{error}</p></div>;
+  if (!data) return null;
+
+  const { sector, stats, unidades, siblingSectores, currentUserLocalRole } = data;
+  const canWrite = currentUserLocalRole === 'ADMIN' || currentUserLocalRole === 'SUPERVISOR';
+  const basePath = `/dashboard/locales/${localId}`;
+  const sectorBounds = sector.bounds as GeoJSON.Polygon | null;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <Breadcrumbs items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: sector.area.localProductivo.nombre, href: basePath },
+            { label: sector.area.nombre, href: `${basePath}/areas/${areaId}` },
+            { label: sector.nombre },
+          ]} />
+          <h2 className="text-3xl font-bold">{sector.nombre}</h2>
+          {sector.tipo && <p className="text-muted-foreground">Tipo: {sector.tipo}</p>}
+        </div>
+        {canWrite && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setEditDialogOpen(true)}><Pencil className="size-4" />Editar</Button>
+            <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}><Trash2 className="size-4" />Eliminar</Button>
+          </div>
+        )}
+      </div>
+
+      {error && <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+
+      {unidades.some(u => !u.posicion) && (
+        <div className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2">
+          <MapPinOff className="size-4 shrink-0" />
+          <span>{unidades.filter(u => !u.posicion).length} unidad(es) sin posicion en el mapa. Editalas para asignarles una ubicacion dentro del sector.</span>
+        </div>
+      )}
+
+      <StatsGrid className="lg:grid-cols-1 max-w-xs">
+        <StatsCard icon={Box} label="Unidades de Produccion" value={stats.totalUnidades} />
+      </StatsGrid>
+
+      {sectorBounds && (
+        <DashboardMapCard title="Mapa del Sector" bounds={sectorBounds}>
+          {(isSatellite) => (
+            <PointOverlayLayers parentId="sector" parentBounds={sectorBounds} isSatellite={isSatellite} onPointClick={(unidadId) => router.push(`/dashboard/unidades/${unidadId}`)}>
+              {unidades}
+            </PointOverlayLayers>
+          )}
+        </DashboardMapCard>
+      )}
+
+      <Card>
+        <CardHeader><CardTitle>Informacion del Sector</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+            {[
+              { label: 'Nombre', value: sector.nombre },
+              { label: 'Tipo', value: sector.tipo },
+              { label: 'Responsable', value: sector.usuarioResponsable ? `${sector.usuarioResponsable.nombre} ${sector.usuarioResponsable.apellido ?? ''}`.trim() : null },
+            ].map((field) => field.value && (
+              <div key={field.label}>
+                <span className="text-muted-foreground">{field.label}</span>
+                <p className="font-medium">{field.value}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-semibold">Unidades de Produccion</h3>
+          {canWrite && <Button onClick={() => setUnidadDialogOpen(true)}><Plus className="size-4" />Nueva Unidad</Button>}
+        </div>
+        <DataTable
+          columns={[
+            { id: 'nombre', header: 'Nombre', accessorFn: (row) => (
+              <span className="flex items-center gap-2">
+                {row.nombre}
+                {!row.posicion && <Badge variant="outline" className="text-amber-600 border-amber-400 gap-1"><MapPinOff className="size-3" />Sin ubicacion</Badge>}
+              </span>
+            ), sortable: true },
+            { id: 'dispositivoCodigo', header: 'Dispositivo', accessorFn: (row) => row.dispositivoCodigo ?? '-' },
+            { id: 'ultimaLectura', header: 'Ultima Lectura', accessorFn: (row) => row.ultimaLectura ? new Date(row.ultimaLectura).toLocaleString('es-EC') : 'Sin lecturas' },
+          ] as ColumnDef<(typeof unidades)[0]>[]}
+          data={unidades}
+          searchKey="nombre"
+          searchPlaceholder="Buscar unidades..."
+          emptyMessage="No hay unidades de produccion registradas."
+          rowActions={canWrite ? [
+            { label: 'Editar', icon: <Pencil className="size-4" />, onClick: (u) => { setSelectedUnidad(u); setEditUnidadDialogOpen(true); } },
+            { label: 'Eliminar', icon: <Trash2 className="size-4" />, onClick: (u) => { setSelectedUnidad(u); setDeleteUnidadDialogOpen(true); }, variant: 'destructive' },
+          ] as RowAction<(typeof unidades)[0]>[] : []}
+          onRowClick={(u) => router.push(`/dashboard/unidades/${u.id}`)}
+        />
+      </div>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Editar Sector</DialogTitle><DialogDescription>Modifica los datos del sector.</DialogDescription></DialogHeader>
+          <SectorForm areaId={areaId} usuarios={localUsuarios} defaultValues={{ nombre: sector.nombre, areaId: sector.areaId, tipo: sector.tipo ?? '', usuarioResponsableId: sector.usuarioResponsableId ?? '', bounds: sector.bounds as GeoJSON.Polygon | undefined }} parentBounds={sector.area.bounds as GeoJSON.Polygon | null} siblingSectors={siblingSectores.filter(s => s.bounds).map(s => ({ id: s.id, nombre: s.nombre, bounds: s.bounds as GeoJSON.Polygon }))} onSubmit={handleEditSubmit} loading={submitting} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Eliminar Sector</DialogTitle><DialogDescription>Esta accion no se puede deshacer. Se eliminara permanentemente <strong>{sector.nombre}</strong> y todas sus unidades de produccion.</DialogDescription></DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={submitting}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={submitting}>{submitting ? 'Eliminando...' : 'Eliminar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={unidadDialogOpen} onOpenChange={setUnidadDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Nueva Unidad de Produccion</DialogTitle><DialogDescription>Crea una nueva unidad de produccion en {sector.nombre}.</DialogDescription></DialogHeader>
+          <UnidadForm sectorId={sectorId} onSubmit={handleCreateUnidad} loading={submitting} parentBounds={sectorBounds} siblingUnidades={unidades.filter(u => u.posicion).map(u => ({ id: u.id, nombre: u.nombre, posicion: u.posicion as { lat: number; lng: number } }))} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editUnidadDialogOpen} onOpenChange={(open) => { setEditUnidadDialogOpen(open); if (!open) setSelectedUnidad(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Editar Unidad de Produccion</DialogTitle><DialogDescription>Modifica los datos de la unidad.</DialogDescription></DialogHeader>
+          {selectedUnidad && (
+            <UnidadForm sectorId={sectorId} defaultValues={{ nombre: selectedUnidad.nombre, sectorId, topicMqtt: selectedUnidad.topicMqtt, posicion: selectedUnidad.posicion as { lat: number; lng: number } | undefined }} onSubmit={handleEditUnidad} loading={submitting} parentBounds={sectorBounds} siblingUnidades={unidades.filter(u => u.posicion && u.id !== selectedUnidad.id).map(u => ({ id: u.id, nombre: u.nombre, posicion: u.posicion as { lat: number; lng: number } }))} />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteUnidadDialogOpen} onOpenChange={(open) => { setDeleteUnidadDialogOpen(open); if (!open) setSelectedUnidad(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Eliminar Unidad de Produccion</DialogTitle><DialogDescription>Esta accion no se puede deshacer. Se eliminara permanentemente <strong>{selectedUnidad?.nombre}</strong>.</DialogDescription></DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteUnidadDialogOpen(false)} disabled={submitting}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleDeleteUnidad} disabled={submitting}>{submitting ? 'Eliminando...' : 'Eliminar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clippingDialogOpen} onOpenChange={(open) => { setClippingDialogOpen(open); if (!open) { setClippingData(null); setPendingEditValues(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unidades seran afectadas</DialogTitle>
+            <DialogDescription>Los nuevos limites del sector dejaran algunas unidades de produccion fuera del area. Estas unidades perderan su posicion en el mapa y deberan ser reubicadas.</DialogDescription>
+          </DialogHeader>
+          {clippingData && (
+            <div className="space-y-3 text-sm max-h-64 overflow-y-auto">
+              {clippingData.unidadesNulled.length > 0 && (
+                <div>
+                  <p className="font-medium">Unidades que perderan su posicion en el mapa:</p>
+                  <ul className="list-disc list-inside text-muted-foreground">
+                    {clippingData.unidadesNulled.map((u) => <li key={u.id}>{u.nombre}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setClippingDialogOpen(false); setClippingData(null); setPendingEditValues(null); }} disabled={submitting}>Cancelar</Button>
+            <Button onClick={handleConfirmClipping} disabled={submitting}>{submitting ? 'Guardando...' : 'Confirmar y guardar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

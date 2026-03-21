@@ -1,8 +1,10 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod/v3';
+import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -42,6 +44,13 @@ interface UnidadOption {
   nombre: string;
 }
 
+interface VariableOption {
+  codigo: string;
+  nombre: string;
+  unidad?: string | null;
+  tipo: string;
+}
+
 interface ReglaFormProps {
   defaultValues?: Partial<ReglaFormValues>;
   onSubmit: (values: ReglaFormValues) => void | Promise<void>;
@@ -73,6 +82,58 @@ export function ReglaForm({
   });
 
   const isEdit = !!defaultValues;
+
+  const selectedUnidadId = form.watch('unidadProduccionId');
+  const [availableVariables, setAvailableVariables] = useState<VariableOption[]>([]);
+  const [loadingVariables, setLoadingVariables] = useState(false);
+
+  useEffect(() => {
+    if (!selectedUnidadId) {
+      setAvailableVariables([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchVariables = async () => {
+      setLoadingVariables(true);
+      try {
+        // Fetch the unit to get its tipoUnidadProduccionId
+        const unidadRes = await api.get(`/api/unidades/${selectedUnidadId}`);
+        const tipoId = unidadRes.data.tipoUnidadProduccionId;
+
+        if (!tipoId) {
+          if (!cancelled) setAvailableVariables([]);
+          return;
+        }
+
+        // Fetch the tipo to get its variables
+        const tipoRes = await api.get(`/api/tipos-unidad/${tipoId}`);
+        const vars = tipoRes.data.variables;
+
+        if (!cancelled && Array.isArray(vars)) {
+          setAvailableVariables(
+            vars.map((v: any) => ({
+              codigo: v.codigo,
+              nombre: v.nombre,
+              unidad: v.unidad,
+              tipo: v.tipo,
+            })),
+          );
+        }
+      } catch {
+        if (!cancelled) setAvailableVariables([]);
+      } finally {
+        if (!cancelled) setLoadingVariables(false);
+      }
+    };
+
+    fetchVariables();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUnidadId]);
 
   return (
     <Form {...form}>
@@ -124,9 +185,26 @@ export function ReglaForm({
           render={({ field }) => (
             <FormItem>
               <FormLabel>Variable *</FormLabel>
-              <FormControl>
-                <Input placeholder="Ej: velocidad, nivel, flujo_instantaneo" {...field} />
-              </FormControl>
+              {availableVariables.length > 0 ? (
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingVariables ? 'Cargando variables...' : 'Seleccionar variable'} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {availableVariables.map((v) => (
+                      <SelectItem key={v.codigo} value={v.codigo}>
+                        {v.nombre} ({v.codigo}){v.unidad ? ` — ${v.unidad}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <FormControl>
+                  <Input placeholder="Ej: velocidad, nivel, flujo_instantaneo" {...field} />
+                </FormControl>
+              )}
               <FormMessage />
             </FormItem>
           )}

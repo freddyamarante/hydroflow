@@ -7,7 +7,6 @@ IoT monitoring system for shrimp farm water management.
 - **Backend:** Bun + Fastify + Prisma + PostgreSQL + TimescaleDB
 - **Frontend:** Next.js 14 (App Router) - Coming soon
 - **MQTT:** Mosquitto
-- **Cache:** Redis
 - **Infra:** Docker + Hetzner VPS + GitHub Actions
 
 ## Local Development
@@ -20,23 +19,27 @@ IoT monitoring system for shrimp farm water management.
 ### Setup
 
 1. **Start local services** (PostgreSQL, Redis, Mosquitto):
+
 ```bash
 bun run dev:services
 ```
 
-2. **Install dependencies**:
+1. **Install dependencies**:
+
 ```bash
 bun install
 ```
 
-3. **Set up backend**:
+1. **Set up backend**:
+
 ```bash
 cd backend
 bun prisma:generate
 bun prisma:migrate:dev
 ```
 
-4. **Run backend** (hot reload):
+1. **Run backend** (hot reload):
+
 ```bash
 bun dev
 ```
@@ -93,10 +96,10 @@ git push origin main
 
 ## Live Endpoints
 
-- **Production API:** https://api.hydro-flow.io
-- **Production Web:** https://hydro-flow.io (coming soon)
-- **Staging API:** https://api-staging.hydro-flow.io
-- **Staging Web:** https://staging.hydro-flow.io (coming soon)
+- **Production API:** <https://api.hydro-flow.io>
+- **Production Web:** <https://hydro-flow.io> (coming soon)
+- **Staging API:** <https://api-staging.hydro-flow.io>
+- **Staging Web:** <https://staging.hydro-flow.io> (coming soon)
 
 ## Useful Commands
 

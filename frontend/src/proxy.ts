@@ -21,7 +21,7 @@ function getRolFromToken(token: string): string | null {
 export function proxy(request: NextRequest) {
   const token = request.cookies.get('token');
   const { pathname } = request.nextUrl;
-  const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/register');
+  const isAuthPage = pathname.startsWith('/login');
   const isDashboardPage = pathname.startsWith('/dashboard');
 
   if (!token && isDashboardPage) {
@@ -49,5 +49,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/login', '/register'],
+  matcher: ['/dashboard/:path*', '/login'],
 };

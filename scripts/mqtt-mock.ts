@@ -2,6 +2,8 @@ import mqtt from 'mqtt'
 import { ALL_DISPOSITIVOS } from './seed-config'
 
 const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883'
+const MQTT_USERNAME = process.env.MQTT_USERNAME || ''
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD || ''
 const DATABASE_URL = process.env.DATABASE_URL || ''
 const INTERVAL_MS = parseInt(process.env.MOCK_INTERVAL_MS || '60000') // 60s default
 const RETENTION_HOURS = parseInt(process.env.MOCK_RETENTION_HOURS || '24')
@@ -52,7 +54,15 @@ async function cleanupOldLecturas(): Promise<void> {
 // MQTT mock publisher
 // ---------------------------------------------------------------------------
 
-const client = mqtt.connect(BROKER_URL)
+const connectOptions: mqtt.IClientOptions = {}
+if (MQTT_USERNAME) {
+  connectOptions.username = MQTT_USERNAME
+}
+if (MQTT_PASSWORD) {
+  connectOptions.password = MQTT_PASSWORD
+}
+
+const client = mqtt.connect(BROKER_URL, connectOptions)
 
 client.on('connect', () => {
   const totalUnidades = ALL_DISPOSITIVOS.reduce((sum, d) => sum + d.unidades.length, 0)

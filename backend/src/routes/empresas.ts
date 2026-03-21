@@ -2,7 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import argon2 from 'argon2';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
+import { requireAdmin, requireEmpresaAdmin } from '../lib/rbac.js';
+import { Rol } from '@prisma/client';
 
 const createEmpresaSchema = z.object({
   razonSocial: z.string().min(1, 'Razon social is required'),
@@ -22,7 +23,7 @@ const updateEmpresaSchema = createEmpresaSchema.partial();
 const empresasRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('onRequest', fastify.authenticate);
 
-  // GET /empresas - List with pagination
+  // GET /empresas - List with pagination (scoped by empresa for non-admins)
   fastify.get('/empresas', async (request, reply) => {
     try {
       const { page = '1', limit = '20' } = request.query as { page?: string; limit?: string };
@@ -30,13 +31,21 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
       const limitNum = Math.max(1, Math.min(100, parseInt(limit)));
       const skip = (pageNum - 1) * limitNum;
 
+      const user = request.user as { id: string; rol: Rol; empresaId?: string };
+      const where = user.rol !== 'ADMIN' && user.empresaId ? { id: user.empresaId } : {};
+
       const [items, total] = await Promise.all([
         prisma.empresa.findMany({
+          where,
           skip,
           take: limitNum,
           orderBy: { createdAt: 'desc' },
+          include: {
+            grupoCorporativo: { select: { id: true, razonSocial: true } },
+            _count: { select: { localesProductivos: true } },
+          },
         }),
-        prisma.empresa.count(),
+        prisma.empresa.count({ where }),
       ]);
 
       return {
@@ -54,10 +63,18 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /empresas/:id - Single empresa
+  // GET /empresas/:id - Single empresa (scoped)
   fastify.get('/empresas/:id', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user as { id: string; rol: Rol; empresaId?: string };
+
+      if (user.rol !== 'ADMIN' && user.empresaId !== id) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: 'You do not have access to this empresa',
+        });
+      }
 
       const empresa = await prisma.empresa.findUnique({
         where: { id },
@@ -83,10 +100,18 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /empresas/:id/dashboard - Empresa dashboard data
+  // GET /empresas/:id/dashboard - Empresa dashboard data (scoped)
   fastify.get('/empresas/:id/dashboard', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const user = request.user as { id: string; rol: Rol; empresaId?: string };
+
+      if (user.rol !== 'ADMIN' && user.empresaId !== id) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: 'You do not have access to this empresa',
+        });
+      }
 
       const empresa = await prisma.empresa.findUnique({
         where: { id },
@@ -225,8 +250,8 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /empresas/:id/usuarios - List users for this empresa (admin only)
-  fastify.get('/empresas/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // GET /empresas/:id/usuarios - List users for this empresa (admin or empresa admin)
+  fastify.get('/empresas/:id/usuarios', { preHandler: [requireEmpresaAdmin(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const { page = '1', limit = '100' } = request.query as { page?: string; limit?: string };
@@ -255,8 +280,8 @@ const empresasRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /empresas/:id/usuarios - Create user within empresa (admin only)
-  fastify.post('/empresas/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /empresas/:id/usuarios - Create user within empresa (admin or empresa admin)
+  fastify.post('/empresas/:id/usuarios', { preHandler: [requireEmpresaAdmin(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = z.object({

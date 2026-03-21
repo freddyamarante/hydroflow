@@ -1,14 +1,18 @@
 import { FastifyPluginAsync } from 'fastify';
-import { Rol } from '@prisma/client';
+import { Prisma, Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { getUserLocalIds, requireWriteAccess, getLocalIdForSector, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
+import { getUserLocalIds, requireWriteAccess, requireReadAccess, getLocalIdForSector, getLocalIdForArea, computeUserLocalRole } from '../lib/access.js';
+import { requireAdmin } from '../lib/rbac.js';
+import { isPointInsideBounds } from '../lib/geo.js';
 
 const createSectorSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   areaId: z.string().min(1, 'Area ID is required'),
   tipo: z.string().optional(),
-  bounds: z.any().optional(),
+  bounds: z.any().refine((v) => v && v.type === 'Polygon' && v.coordinates?.length > 0, {
+    message: 'Bounds (map polygon) is required',
+  }),
   detalles: z.any().optional(),
   usuarioResponsableId: z.string().optional().transform(v => v || undefined),
 });
@@ -74,7 +78,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /sectores/:id - Single sector
-  fastify.get('/sectores/:id', async (request, reply) => {
+  fastify.get('/sectores/:id', { preHandler: [requireReadAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -103,7 +107,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /sectores/:id/dashboard - Sector dashboard data
-  fastify.get('/sectores/:id/dashboard', async (request, reply) => {
+  fastify.get('/sectores/:id/dashboard', { preHandler: [requireReadAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -129,7 +133,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
               posicion: true,
               dispositivo: { select: { id: true, codigo: true } },
               lecturas: {
-                select: { timestamp: true },
+                select: { timestamp: true, valores: true },
                 orderBy: { timestamp: 'desc' },
                 take: 1,
               },
@@ -168,6 +172,7 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
           posicion: u.posicion,
           dispositivoCodigo: u.dispositivo?.codigo ?? null,
           ultimaLectura: u.lecturas[0]?.timestamp ?? null,
+          valores: (u.lecturas[0]?.valores as Record<string, number> | undefined) ?? null,
         })),
         siblingSectores,
         currentUserLocalRole,
@@ -209,17 +214,59 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PUT /sectores/:id - Update sector (supervisor+)
+  // When bounds change, nulls positions of unidades outside new bounds
+  // Use ?dryRun=true to preview without saving
   fastify.put('/sectores/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const { dryRun } = request.query as { dryRun?: string };
       const data = updateSectorSchema.parse(request.body);
+      const isDryRun = dryRun === 'true';
 
-      const sector = await prisma.sector.update({
-        where: { id },
-        data,
+      if (!data.bounds) {
+        if (isDryRun) return { _clipping: null };
+        const sector = await prisma.sector.update({ where: { id }, data });
+        return sector;
+      }
+
+      const newBounds = data.bounds as GeoJSON.Polygon;
+
+      // Find unidades with positions that would be outside the new bounds
+      const unidades = await prisma.unidadProduccion.findMany({
+        where: { sectorId: id, posicion: { not: Prisma.DbNull } },
+        select: { id: true, nombre: true, posicion: true },
       });
 
-      return sector;
+      const unidadesNulled: { id: string; nombre: string }[] = [];
+      const unidadNullIds: string[] = [];
+
+      for (const u of unidades) {
+        const pos = u.posicion as { lat: number; lng: number };
+        if (!isPointInsideBounds(pos, newBounds)) {
+          unidadesNulled.push({ id: u.id, nombre: u.nombre });
+          unidadNullIds.push(u.id);
+        }
+      }
+
+      const hasClipping = unidadesNulled.length > 0;
+      const clippingSummary = hasClipping ? { unidadesNulled } : null;
+
+      if (isDryRun) return { _clipping: clippingSummary };
+
+      const txOps: any[] = [prisma.sector.update({ where: { id }, data })];
+
+      if (unidadNullIds.length > 0) {
+        txOps.push(prisma.unidadProduccion.updateMany({
+          where: { id: { in: unidadNullIds } },
+          data: { posicion: Prisma.DbNull },
+        }));
+      }
+
+      const results = await prisma.$transaction(txOps);
+      const updatedSector = results[0];
+
+      if (hasClipping) return { ...updatedSector, _clipping: clippingSummary };
+      return updatedSector;
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.code(400).send({
@@ -243,8 +290,8 @@ const sectoresRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /sectores/:id - Delete sector (supervisor+)
-  fastify.delete('/sectores/:id', { preHandler: [requireWriteAccess(async (req) => getLocalIdForSector((req.params as { id: string }).id))] }, async (request, reply) => {
+  // DELETE /sectores/:id - Delete sector (admin only)
+  fastify.delete('/sectores/:id', { preHandler: [requireAdmin] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 

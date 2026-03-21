@@ -1,8 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { canAccessLocal } from '../lib/access.js';
+import { requireEmpresaAdmin } from '../lib/rbac.js';
+import { canAccessLocal, getEmpresaIdForLocal } from '../lib/access.js';
 
 const assignUsuarioSchema = z.object({
   usuarioId: z.string().min(1, 'UsuarioId is required'),
@@ -70,8 +70,8 @@ const localUsuariosRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /locales/:id/usuarios - Link a user to this local with a RolLocal (admin only)
-  fastify.post('/locales/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /locales/:id/usuarios - Link a user to this local with a RolLocal (admin or empresa admin)
+  fastify.post('/locales/:id/usuarios', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = assignUsuarioSchema.parse(request.body);
@@ -131,8 +131,8 @@ const localUsuariosRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /locales/:id/usuarios/:userId - Update the RolLocal (admin only)
-  fastify.put('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /locales/:id/usuarios/:userId - Update the RolLocal (admin or empresa admin)
+  fastify.put('/locales/:id/usuarios/:userId', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id, userId } = request.params as { id: string; userId: string };
       const data = updateRolSchema.parse(request.body);
@@ -171,8 +171,8 @@ const localUsuariosRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /locales/:id/usuarios/:userId - Unlink user from local (admin only)
-  fastify.delete('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /locales/:id/usuarios/:userId - Unlink user from local (admin or empresa admin)
+  fastify.delete('/locales/:id/usuarios/:userId', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id, userId } = request.params as { id: string; userId: string };
 

@@ -1,15 +1,18 @@
 import { FastifyPluginAsync } from 'fastify';
-import { Rol } from '@prisma/client';
+import { Prisma, Rol } from '@prisma/client';
 import { z } from 'zod';
 import prisma from '../lib/prisma.js';
-import { requireAdmin } from '../lib/rbac.js';
-import { getUserLocalIds, requireWriteAccess, computeUserLocalRole } from '../lib/access.js';
+import { requireAdmin, requireEmpresaAdmin } from '../lib/rbac.js';
+import { getUserLocalIds, requireWriteAccess, requireReadAccess, computeUserLocalRole, getEmpresaIdForLocal } from '../lib/access.js';
+import { clipBounds, isPointInsideBounds } from '../lib/geo.js';
 
 const createLocalSchema = z.object({
   nombre: z.string().min(1, 'Nombre is required'),
   tipoProductivo: z.string().optional(),
   empresaId: z.string().min(1, 'Empresa ID is required'),
-  bounds: z.any().optional(),
+  bounds: z.any().refine((v) => v && v.type === 'Polygon' && v.coordinates?.length > 0, {
+    message: 'Bounds (map location) is required',
+  }),
   areaProduccion: z.string().optional(),
   direccion: z.string().optional(),
   ubicacionDomiciliaria: z.string().optional(),
@@ -66,7 +69,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /locales/:id - Single local productivo
-  fastify.get('/locales/:id', async (request, reply) => {
+  fastify.get('/locales/:id', { preHandler: [requireReadAccess(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -95,7 +98,7 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /locales/:id/dashboard - Local productivo dashboard data
-  fastify.get('/locales/:id/dashboard', async (request, reply) => {
+  fastify.get('/locales/:id/dashboard', { preHandler: [requireReadAccess(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -186,17 +189,161 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PUT /locales/:id - Update local productivo (supervisor+ can edit)
+  // When bounds change, auto-clips child area polygons and cascade-nulls sector/unidad geometry
+  // Use ?dryRun=true to preview clipping without saving
   fastify.put('/locales/:id', { preHandler: [requireWriteAccess(async (req) => (req.params as { id: string }).id)] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
+      const { dryRun } = request.query as { dryRun?: string };
       const data = updateLocalSchema.parse(request.body);
+      const isDryRun = dryRun === 'true';
 
-      const local = await prisma.localProductivo.update({
-        where: { id },
-        data,
+      // If bounds are not being updated, just do a simple update
+      if (!data.bounds) {
+        if (isDryRun) return { _clipping: null };
+        const local = await prisma.localProductivo.update({ where: { id }, data });
+        return local;
+      }
+
+      const newBounds = data.bounds as GeoJSON.Polygon;
+
+      // Fetch areas with non-null bounds and their sectors
+      const areas = await prisma.area.findMany({
+        where: { localProductivoId: id, bounds: { not: Prisma.DbNull } },
+        select: {
+          id: true, nombre: true, bounds: true,
+          sectores: {
+            where: { bounds: { not: Prisma.DbNull } },
+            select: {
+              id: true, nombre: true, bounds: true,
+              unidadesProduccion: {
+                where: { posicion: { not: Prisma.DbNull } },
+                select: { id: true, nombre: true, posicion: true },
+              },
+            },
+          },
+        },
       });
 
-      return local;
+      // --- Clip areas against new local bounds ---
+      const areasClipped: { id: string; nombre: string }[] = [];
+      const areasOutside: { id: string; nombre: string }[] = [];
+      const areaUpdates: { id: string; bounds: GeoJSON.Polygon }[] = [];
+      const areaNullIds: string[] = [];
+
+      // Build a map: areaId → new effective bounds (clipped or original)
+      const areaNewBounds = new Map<string, GeoJSON.Polygon | null>();
+
+      for (const area of areas) {
+        const result = clipBounds(area.bounds as GeoJSON.Polygon, newBounds);
+        if (result.status === 'unchanged') {
+          areaNewBounds.set(area.id, area.bounds as GeoJSON.Polygon);
+        } else if (result.status === 'clipped') {
+          areasClipped.push({ id: area.id, nombre: area.nombre });
+          areaUpdates.push({ id: area.id, bounds: result.bounds });
+          areaNewBounds.set(area.id, result.bounds);
+        } else {
+          areasOutside.push({ id: area.id, nombre: area.nombre });
+          areaNullIds.push(area.id);
+          areaNewBounds.set(area.id, null);
+        }
+      }
+
+      // --- Clip sectors against their area's new bounds ---
+      const sectoresClipped: { id: string; nombre: string }[] = [];
+      const sectoresOutside: { id: string; nombre: string }[] = [];
+      const sectorUpdates: { id: string; bounds: GeoJSON.Polygon }[] = [];
+      const sectorNullIds: string[] = [];
+      const unidadesNulled: { id: string; nombre: string }[] = [];
+      const unidadNullIds: string[] = [];
+
+      for (const area of areas) {
+        const effectiveBounds = areaNewBounds.get(area.id);
+
+        for (const sector of area.sectores) {
+          if (!effectiveBounds) {
+            // Area is fully outside → all its sectors are outside too
+            sectoresOutside.push({ id: sector.id, nombre: sector.nombre });
+            sectorNullIds.push(sector.id);
+            for (const u of sector.unidadesProduccion) {
+              unidadesNulled.push({ id: u.id, nombre: u.nombre });
+              unidadNullIds.push(u.id);
+            }
+            continue;
+          }
+
+          const result = clipBounds(sector.bounds as GeoJSON.Polygon, effectiveBounds);
+          if (result.status === 'unchanged') continue;
+          if (result.status === 'clipped') {
+            sectoresClipped.push({ id: sector.id, nombre: sector.nombre });
+            sectorUpdates.push({ id: sector.id, bounds: result.bounds });
+            // Only null unidades actually outside the new clipped sector bounds
+            for (const u of sector.unidadesProduccion) {
+              const pos = u.posicion as { lat: number; lng: number };
+              if (!isPointInsideBounds(pos, result.bounds)) {
+                unidadesNulled.push({ id: u.id, nombre: u.nombre });
+                unidadNullIds.push(u.id);
+              }
+            }
+          } else {
+            sectoresOutside.push({ id: sector.id, nombre: sector.nombre });
+            sectorNullIds.push(sector.id);
+            for (const u of sector.unidadesProduccion) {
+              unidadesNulled.push({ id: u.id, nombre: u.nombre });
+              unidadNullIds.push(u.id);
+            }
+          }
+        }
+      }
+
+      const hasClipping = areasClipped.length > 0 || areasOutside.length > 0
+        || sectoresClipped.length > 0 || sectoresOutside.length > 0;
+
+      const clippingSummary = hasClipping ? {
+        areasClipped, areasOutside,
+        sectoresClipped, sectoresOutside,
+        unidadesNulled,
+      } : null;
+
+      // Dry run — return preview without saving
+      if (isDryRun) {
+        return { _clipping: clippingSummary };
+      }
+
+      // Execute all changes in a single transaction
+      const txOps: any[] = [
+        prisma.localProductivo.update({ where: { id }, data }),
+      ];
+
+      for (const upd of areaUpdates) {
+        txOps.push(prisma.area.update({ where: { id: upd.id }, data: { bounds: upd.bounds as any } }));
+      }
+      if (areaNullIds.length > 0) {
+        txOps.push(prisma.area.updateMany({ where: { id: { in: areaNullIds } }, data: { bounds: Prisma.DbNull } }));
+      }
+
+      for (const upd of sectorUpdates) {
+        txOps.push(prisma.sector.update({ where: { id: upd.id }, data: { bounds: upd.bounds as any } }));
+      }
+      if (sectorNullIds.length > 0) {
+        txOps.push(prisma.sector.updateMany({ where: { id: { in: sectorNullIds } }, data: { bounds: Prisma.DbNull } }));
+      }
+
+      if (unidadNullIds.length > 0) {
+        txOps.push(prisma.unidadProduccion.updateMany({
+          where: { id: { in: unidadNullIds } },
+          data: { posicion: Prisma.DbNull },
+        }));
+      }
+
+      const results = await prisma.$transaction(txOps);
+      const updatedLocal = results[0];
+
+      if (hasClipping) {
+        return { ...updatedLocal, _clipping: clippingSummary };
+      }
+
+      return updatedLocal;
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.code(400).send({
@@ -244,8 +391,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /locales/:id/usuarios - List assigned users with their local roles (admin only)
-  fastify.get('/locales/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // GET /locales/:id/usuarios - List assigned users (admin or empresa admin)
+  fastify.get('/locales/:id/usuarios', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
 
@@ -274,8 +421,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // POST /locales/:id/usuarios - Assign user to local (admin only)
-  fastify.post('/locales/:id/usuarios', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // POST /locales/:id/usuarios - Assign user to local (admin or empresa admin)
+  fastify.post('/locales/:id/usuarios', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
       const data = z.object({
@@ -357,8 +504,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // PUT /locales/:id/usuarios/:userId - Update local-level role (admin only)
-  fastify.put('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // PUT /locales/:id/usuarios/:userId - Update local-level role (admin or empresa admin)
+  fastify.put('/locales/:id/usuarios/:userId', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id, userId } = request.params as { id: string; userId: string };
       const data = z.object({
@@ -408,8 +555,8 @@ const localesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // DELETE /locales/:id/usuarios/:userId - Remove assignment (admin only)
-  fastify.delete('/locales/:id/usuarios/:userId', { preHandler: [requireAdmin] }, async (request, reply) => {
+  // DELETE /locales/:id/usuarios/:userId - Remove assignment (admin or empresa admin)
+  fastify.delete('/locales/:id/usuarios/:userId', { preHandler: [requireEmpresaAdmin(async (req) => getEmpresaIdForLocal((req.params as { id: string }).id))] }, async (request, reply) => {
     try {
       const { id, userId } = request.params as { id: string; userId: string };
 

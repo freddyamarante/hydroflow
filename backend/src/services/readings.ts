@@ -1,6 +1,9 @@
+import type { Prisma } from '@prisma/client';
 import { WebSocket } from 'ws';
 import prisma from '../lib/prisma.js';
 import { onMqttMessage } from './mqtt.js';
+import { evaluateRules } from './rule-engine.js';
+import { computeVariables } from './formula-engine.js';
 
 // Map of unidadId -> Set of WebSocket connections
 const wsConnections = new Map<string, Set<WebSocket>>();
@@ -36,10 +39,6 @@ export function removeWsConnection(unidadId: string, ws: WebSocket): void {
 
 interface MqttUnidadPayload {
   nombre: string;
-  velocidad?: number;
-  nivel?: number;
-  voltaje?: number;
-  corriente?: number;
   [key: string]: unknown;
 }
 
@@ -70,7 +69,12 @@ export function initReadingsHandler(): void {
         where: { codigo },
         include: {
           unidadesProduccion: {
-            include: {
+            select: {
+              id: true,
+              nombre: true,
+              sectorId: true,
+              configuracion: true,
+              tipoUnidadProduccionId: true,
               sector: { select: { id: true } },
             },
           },
@@ -98,31 +102,30 @@ export function initReadingsHandler(): void {
           continue;
         }
 
-        // Get ancho_canal from unidad configuracion for formula
-        const config = (unidad.configuracion as Record<string, unknown>) || {};
-        const anchoCanal = typeof config.ancho_canal === 'number' ? config.ancho_canal : 0;
-
-        const velocidad = typeof entry.velocidad === 'number' ? entry.velocidad : 0;
-        const nivel = typeof entry.nivel === 'number' ? entry.nivel : 0;
-
-        // Compute formulas
-        const flujoInstantaneo = Math.round(velocidad * nivel * anchoCanal * 1000) / 1000;
-        const bombaEncendida = nivel > 0 && flujoInstantaneo > 0;
-
-        // Build valores: raw sensor data + calculated fields
+        // Build valores: use dynamic formula engine if unit type is assigned
         const { nombre: _nombre, ...sensorData } = entry;
-        const valores = {
-          ...sensorData,
-          flujo_instantaneo: flujoInstantaneo,
-          bomba_encendida: bombaEncendida,
-        };
+        const config = (unidad.configuracion as Record<string, unknown>) || {};
+
+        let valores: Record<string, unknown>;
+        if (unidad.tipoUnidadProduccionId) {
+          valores = await computeVariables(
+            unidad.tipoUnidadProduccionId,
+            sensorData,
+            config,
+            unidad.id,
+            timestamp,
+          );
+        } else {
+          // No type assigned -- store raw sensor data only
+          valores = sensorData;
+        }
 
         // Store lectura
         const lectura = await prisma.lectura.create({
           data: {
             unidadProduccionId: unidad.id,
             timestamp,
-            valores,
+            valores: valores as Prisma.InputJsonValue,
           },
         });
 
@@ -133,6 +136,11 @@ export function initReadingsHandler(): void {
           timestamp: lectura.timestamp,
           valores,
         });
+
+        // Evaluate rules (fire-and-forget, don't block reading pipeline)
+        evaluateRules(unidad.id, valores as Record<string, unknown>).catch(err =>
+          console.error('[Rule Engine] Error evaluating rules:', err)
+        );
 
         processedCount++;
       }

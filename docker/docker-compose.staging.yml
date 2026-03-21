@@ -33,6 +33,10 @@ services:
     networks:
       - hydroflow-staging
 
+  # MQTT broker with authentication enabled.
+  # Generate the password file on the server before first deploy:
+  #   docker exec -it hydroflow-mqtt-staging mosquitto_passwd -c /mosquitto/config/passwd <username>
+  # Then restart the broker: docker compose restart mosquitto
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: hydroflow-mqtt-staging
@@ -40,7 +44,7 @@ services:
     ports:
       - "127.0.0.1:1884:1883"
     volumes:
-      - ../mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ../mosquitto/config/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data_staging:/mosquitto/data
     networks:
       - hydroflow-staging
@@ -56,6 +60,8 @@ services:
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
       REDIS_URL: redis://redis:6379
       MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       PORT: 3000
       HOST: 0.0.0.0
@@ -98,6 +104,8 @@ services:
     restart: unless-stopped
     environment:
       MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD}
       DATABASE_URL: postgresql://hydroflow:${DB_PASSWORD}@postgres:5432/hydroflow_staging
       MOCK_INTERVAL_MS: "15000"
       MOCK_RETENTION_HOURS: "24"

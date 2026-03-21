@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
-import Link from 'next/link';
+
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -117,12 +117,6 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
-            <div className="mt-4 text-center text-sm">
-              <span className="text-gray-600 dark:text-gray-400">¿No tienes cuenta? </span>
-              <Link href="/register" className="text-cyan-600 dark:text-cyan-400 hover:underline">
-                Regístrate
-              </Link>
-            </div>
           </CardContent>
         </Card>
         <motion.p

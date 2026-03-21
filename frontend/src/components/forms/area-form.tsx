@@ -28,7 +28,9 @@ const areaSchema = z.object({
   nombre: z.string().min(1, 'El nombre es requerido'),
   localProductivoId: z.string().min(1, 'El local productivo es requerido'),
   actividadProductiva: z.string().optional(),
-  bounds: z.any().optional(),
+  bounds: z.any().refine((v) => v && v.type === 'Polygon' && v.coordinates?.length > 0, {
+    message: 'Debes dibujar los limites del area en el mapa',
+  }),
 });
 
 export type AreaFormValues = z.infer<typeof areaSchema>;

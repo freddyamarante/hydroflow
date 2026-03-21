@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod/v3';
@@ -21,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, ChevronDown } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { RectangleEditor } from '@/components/maps/rectangle-editor';
 
 const localSchema = z.object({
@@ -31,7 +30,9 @@ const localSchema = z.object({
   areaProduccion: z.string().optional(),
   direccion: z.string().optional(),
   ubicacionDomiciliaria: z.string().optional(),
-  bounds: z.any().optional(),
+  bounds: z.any().refine((v) => v && v.type === 'Polygon' && v.coordinates?.length > 0, {
+    message: 'Debes dibujar los limites del local en el mapa',
+  }),
 });
 
 export type LocalFormValues = z.infer<typeof localSchema>;
@@ -47,6 +48,7 @@ interface LocalFormProps {
   loading?: boolean;
   empresas?: EmpresaOption[];
   empresaId?: string;
+  childPolygons?: { id: string; nombre: string; bounds: GeoJSON.Polygon }[];
 }
 
 export function LocalForm({
@@ -55,9 +57,8 @@ export function LocalForm({
   loading = false,
   empresas = [],
   empresaId,
+  childPolygons,
 }: LocalFormProps) {
-  const [mapOpen, setMapOpen] = useState(!!defaultValues?.bounds);
-
   const form = useForm<LocalFormValues>({
     resolver: zodResolver(localSchema),
     defaultValues: {
@@ -190,38 +191,23 @@ export function LocalForm({
           )}
         />
 
-        {/* Map section - collapsible */}
-        <div className="border rounded-md">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
-            onClick={() => setMapOpen(!mapOpen)}
-          >
-            <span>Ubicacion en Mapa (opcional)</span>
-            <ChevronDown
-              className={`size-4 transition-transform ${mapOpen ? 'rotate-180' : ''}`}
-            />
-          </button>
-          {mapOpen && (
-            <div className="px-4 pb-4">
-              <FormField
-                control={form.control}
-                name="bounds"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <RectangleEditor
-                        value={field.value as GeoJSON.Polygon | null | undefined}
-                        onChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+        <FormField
+          control={form.control}
+          name="bounds"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Ubicacion en Mapa *</FormLabel>
+              <FormControl>
+                <RectangleEditor
+                  value={field.value as GeoJSON.Polygon | null | undefined}
+                  onChange={field.onChange}
+                  childPolygons={childPolygons}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
-        </div>
+        />
 
         <Button type="submit" disabled={loading} className="w-full">
           {loading && <Loader2 className="animate-spin" />}

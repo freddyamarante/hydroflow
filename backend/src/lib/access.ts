@@ -125,6 +125,52 @@ export const getLocalIdFromArea = getLocalIdForArea;
 export const getLocalIdFromSector = getLocalIdForSector;
 export const getLocalIdFromUnidad = getLocalIdForUnidad;
 
+// --- Empresa-scoping helpers ---
+
+export async function getEmpresaIdForLocal(localId: string): Promise<string | null> {
+  const local = await prisma.localProductivo.findUnique({
+    where: { id: localId },
+    select: { empresaId: true },
+  });
+  return local?.empresaId ?? null;
+}
+
+export async function canAccessEmpresa(
+  userId: string,
+  targetEmpresaId: string,
+  rol: Rol,
+  userEmpresaId?: string
+): Promise<boolean> {
+  if (rol === 'ADMIN') return true;
+  return userEmpresaId === targetEmpresaId;
+}
+
+/**
+ * Factory that creates a preHandler to check read access (any role at that local).
+ * `getLocalIdFn` receives the request and must return the localProductivoId.
+ */
+export function requireReadAccess(
+  getLocalIdFn: (request: FastifyRequest) => Promise<string | null>
+) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = request.user as { id: string; rol: Rol };
+    if (user.rol === 'ADMIN') return;
+
+    const localId = await getLocalIdFn(request);
+    if (!localId) {
+      return reply.code(404).send({ error: 'Not Found', message: 'Resource not found' });
+    }
+
+    const allowed = await canAccessLocal(user.id, localId, user.rol);
+    if (!allowed) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        message: 'You do not have access to this resource',
+      });
+    }
+  };
+}
+
 /**
  * Factory that creates a preHandler to check write access.
  * `getLocalIdFn` receives the request and must return the localProductivoId.
